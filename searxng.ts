@@ -88,8 +88,13 @@ function normalizeHeaders(value: unknown): Record<string, string> {
 		const name = key.trim();
 		// RFC 7230 token chars only — reject empty or malformed header names.
 		if (!name || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) continue;
-		if (!isValidHeaderValue(headerValue)) continue;
-		headers[name] = headerValue;
+		// Resolve header value from environment
+		let resolvedValue = headerValue.replace(/\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, braced, bare) => {
+			if (match === "$$") return "$";
+			return process.env[braced ?? bare] ?? headerValue;
+		});
+		if (!isValidHeaderValue(resolvedValue)) continue;
+		headers[name] = resolvedValue;
 	}
 	return headers;
 }
