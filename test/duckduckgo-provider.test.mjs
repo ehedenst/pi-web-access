@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -58,7 +58,8 @@ test("DuckDuckGo uses the fixed HTML endpoint, decodes redirects, and caps resul
 test("DuckDuckGo enforces local domain filters and accepts filtered empty results", () => {
 	const child = runChild(`
 		globalThis.fetch = async () => new Response(${JSON.stringify(RESULT_HTML)}, { status: 200 });
-		const { searchWithDuckDuckGo } = await import(${JSON.stringify(duckDuckGoModuleUrl)});
+		const { searchWithDuckDuckGo, resetDuckDuckGoRateLimit } = await import(${JSON.stringify(duckDuckGoModuleUrl)});
+		resetDuckDuckGoRateLimit({ minIntervalMs: 0, cooldownMs: 0 });
 		const allowed = await searchWithDuckDuckGo("example", { domainFilter: ["example.net"], numResults: 3 });
 		const filtered = await searchWithDuckDuckGo("example", { domainFilter: ["example.com", "-docs.example.com"] });
 		console.log(JSON.stringify({ allowed, filtered }));
@@ -81,7 +82,8 @@ test("DuckDuckGo invalid HTML fails directly and falls through configured invali
 			if (String(url) === "https://api.tavily.com/search") return new Response(JSON.stringify({ answer: "fallback", results: [] }), { status: 200 });
 			throw new Error("Unexpected fetch " + url);
 		};
-		const { searchWithDuckDuckGo } = await import(${JSON.stringify(duckDuckGoModuleUrl)});
+		const { searchWithDuckDuckGo, resetDuckDuckGoRateLimit } = await import(${JSON.stringify(duckDuckGoModuleUrl)});
+		resetDuckDuckGoRateLimit({ minIntervalMs: 0, cooldownMs: 0 });
 		const { search } = await import(${JSON.stringify(searchModuleUrl)});
 		let directError = "";
 		try { await searchWithDuckDuckGo("blocked"); } catch (error) { directError = String(error); }
@@ -114,4 +116,89 @@ test("DuckDuckGo 503 falls through configured transient routing", async () => {
 	`, { PI_CODING_AGENT_DIR: home, TAVILY_API_KEY: "tavily-test-key" });
 	assert.equal(child.status, 0, child.stderr);
 	assert.equal(JSON.parse(child.stdout.trim()).provider, "tavily");
+});
+
+test("DuckDuckGo reports bot checks distinctly and returns no-results pages as empty", async () => {
+	const home = await createConfig({
+		searchRouting: { providers: ["duckduckgo", "tavily"], fallbackOn: ["quota"] },
+	});
+	const child = runChild(`
+		const pages = {
+			status202: [202, '<p>please wait</p>'],
+			anomaly200: [200, '<div class="anomaly-modal__box">bots use DuckDuckGo too</div>'],
+			challenge200: [200, '<form id="challenge-form"></form>'],
+			empty: [200, '<div class="no-results__message">No results found for <b>zzz</b>.</div>'],
+		};
+		globalThis.fetch = async (url) => {
+			if (String(url) === "https://api.tavily.com/search") return new Response(JSON.stringify({ answer: "fallback", results: [] }), { status: 200 });
+			const [status, body] = pages[new URL(url).searchParams.get("q")];
+			return new Response(body, { status });
+		};
+		const { searchWithDuckDuckGo, resetDuckDuckGoRateLimit } = await import(${JSON.stringify(duckDuckGoModuleUrl)});
+		resetDuckDuckGoRateLimit({ minIntervalMs: 0, cooldownMs: 0 });
+		const { search } = await import(${JSON.stringify(searchModuleUrl)});
+		const errors = {};
+		for (const q of ["status202", "anomaly200", "challenge200"]) {
+			try { await searchWithDuckDuckGo(q); } catch (error) { errors[q] = String(error); }
+		}
+		const empty = await searchWithDuckDuckGo("empty");
+		const routed = await search("status202", { provider: "auto" });
+		console.log(JSON.stringify({ errors, empty, routed: routed.provider }));
+	`, { PI_CODING_AGENT_DIR: home, TAVILY_API_KEY: "tavily-test-key" });
+	assert.equal(child.status, 0, child.stderr);
+	const output = JSON.parse(child.stdout.trim());
+	assert.match(output.errors.status202, /DuckDuckGo blocked the request with a bot check \(HTTP 202/);
+	assert.match(output.errors.anomaly200, /DuckDuckGo blocked the request with a bot check \(HTTP 200/);
+	assert.match(output.errors.challenge200, /DuckDuckGo blocked the request with a bot check \(HTTP 200/);
+	assert.deepEqual(output.empty, { answer: "", results: [] });
+	assert.equal(output.routed, "tavily");
+});
+
+test("DuckDuckGo skips the network after a bot check so routing falls through at once", async () => {
+	const home = await createConfig({
+		searchRouting: { providers: ["duckduckgo", "tavily"], fallbackOn: ["quota"] },
+	});
+	const child = runChild(`
+		const calls = [];
+		globalThis.fetch = async (url) => {
+			calls.push(new URL(url).host);
+			if (String(url) === "https://api.tavily.com/search") return new Response(JSON.stringify({ answer: "fallback", results: [] }), { status: 200 });
+			return new Response("<p>please wait</p>", { status: 202 });
+		};
+		const { searchWithDuckDuckGo } = await import(${JSON.stringify(duckDuckGoModuleUrl)});
+		const { search } = await import(${JSON.stringify(searchModuleUrl)});
+		await searchWithDuckDuckGo("first").catch(() => {});
+		let second = "";
+		try { await searchWithDuckDuckGo("second"); } catch (error) { second = String(error); }
+		const routed = await search("third", { provider: "auto" });
+		console.log(JSON.stringify({ second, routed: routed.provider, calls }));
+	`, { PI_CODING_AGENT_DIR: home, TAVILY_API_KEY: "tavily-test-key" });
+	assert.equal(child.status, 0, child.stderr);
+	const output = JSON.parse(child.stdout.trim());
+	assert.match(output.second, /not retrying for 30m .*rate limited/);
+	assert.equal(output.routed, "tavily");
+	assert.deepEqual(output.calls, ["html.duckduckgo.com", "api.tavily.com"]);
+	const shared = JSON.parse(await readFile(join(home, "duckduckgo-cooldown.json"), "utf8"));
+	assert.ok(shared.blockedUntil > Date.now(), "the pause is written for other Pi processes");
+});
+
+test("DuckDuckGo timeout falls through configured network routing instead of counting as an abort", async () => {
+	const home = await createConfig({
+		searchRouting: { providers: ["duckduckgo", "tavily"], fallbackOn: ["network"] },
+	});
+	const child = runChild(`
+		globalThis.fetch = async (url, init) => {
+			if (String(url) === "https://api.tavily.com/search") return new Response(JSON.stringify({ answer: "fallback", results: [] }), { status: 200 });
+			return new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true }));
+		};
+		const { resetDuckDuckGoRateLimit } = await import(${JSON.stringify(duckDuckGoModuleUrl)});
+		resetDuckDuckGoRateLimit({ minIntervalMs: 0, timeoutMs: 50 });
+		const keepAlive = setTimeout(() => {}, 5000); // AbortSignal.timeout alone does not keep Node running
+		const { search } = await import(${JSON.stringify(searchModuleUrl)});
+		const routed = await search("slow", { provider: "auto" });
+		console.log(JSON.stringify({ routed: routed.provider }));
+		clearTimeout(keepAlive);
+	`, { PI_CODING_AGENT_DIR: home, TAVILY_API_KEY: "tavily-test-key" });
+	assert.equal(child.status, 0, child.stderr);
+	assert.equal(JSON.parse(child.stdout.trim()).routed, "tavily");
 });

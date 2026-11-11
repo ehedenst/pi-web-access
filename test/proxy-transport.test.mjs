@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import initializeExtension from "../index.ts";
-import { getActiveProxy, installGlobalProxyFetch, runWithProxy } from "../utils.ts";
+import { getActiveProxy, installGlobalProxyFetch, isProxyBypassedUrl, runWithProxy } from "../utils.ts";
 
 const originalFetch = globalThis.fetch;
 const originalPath = process.env.PATH;
@@ -118,6 +118,55 @@ function proxyArg(args) {
 	const index = args.indexOf("-x");
 	return index === -1 ? undefined : args[index + 1];
 }
+
+test("a proxy set through a second loaded copy of the module is not skipped", async (t) => {
+	await withFakeCurl(t, {
+		"https://example.com/page": { status: 200, statusText: "OK", body: "through proxy" },
+	}, async (logPath) => {
+		let directCalls = 0;
+		globalThis.fetch = async () => {
+			directCalls++;
+			return new Response("direct");
+		};
+		installGlobalProxyFetch();
+		const reloaded = await import(`${utilsUrl}?reloaded`);
+		assert.notEqual(reloaded.runWithProxy, runWithProxy);
+
+		const response = await reloaded.runWithProxy("http://reload-proxy.example:8080", () => fetch("https://example.com/page"));
+		assert.equal(await response.text(), "through proxy");
+		assert.equal(directCalls, 0);
+		const calls = await readCurlCalls(logPath);
+		assert.equal(calls.length, 1);
+		assert.ok(["http://reload-proxy.example:8080", "http://reload-proxy.example:8080/"].includes(proxyArg(calls[0])));
+	});
+});
+
+test("wrapping stays bounded when an older copy of the module keeps installing its wrapper", async (t) => {
+	t.after(() => { globalThis.fetch = originalFetch; });
+	let directCalls = 0;
+	globalThis.fetch = async () => {
+		directCalls++;
+		return new Response("direct");
+	};
+	// Same skip rule as versions before the shared proxy store.
+	const installOldWrapper = () => {
+		const current = globalThis.fetch;
+		if (current.__piWebAccessProxyFetch === true) return;
+		const wrapped = (input, init) => current(input, init);
+		wrapped.__piWebAccessProxyFetch = true;
+		globalThis.fetch = wrapped;
+	};
+	installOldWrapper();
+	installGlobalProxyFetch();
+	const settled = globalThis.fetch;
+	for (let round = 0; round < 5; round++) {
+		installOldWrapper();
+		installGlobalProxyFetch();
+	}
+	assert.equal(globalThis.fetch, settled);
+	assert.equal(await (await fetch("https://example.com/page")).text(), "direct");
+	assert.equal(directCalls, 1);
+});
 
 test("extension initialization preserves fetch identity and installs proxy transport on first proxied tool call", async (t) => {
 	await withFakeCurl(t, {
@@ -302,6 +351,32 @@ test("configured proxy DNS trust never extends to a different per-call proxy", a
 	const untrusted = runConfigProbe(dir, probe(false));
 	assert.match(untrusted[0], /Blocked internal address/);
 	assert.match(untrusted[3], /^Failed to resolve internal\.example\.test: getaddrinfo ENOTFOUND\. If your configured proxy resolves hostnames, set ssrf\.trustEnvProxy to true/);
+});
+
+test("lockProxy rejects per-call proxy overrides before any request runs", async (t) => {
+	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-lock-test-"));
+	t.after(async () => {
+		await rm(dir, { recursive: true, force: true });
+	});
+	const probe = `
+		let calls = 0;
+		const outcome = (proxy) => { try { return runWithProxy(proxy, () => { calls++; return getActiveProxy(); }); } catch (error) { return error.message; } };
+		console.log(JSON.stringify({ results: [outcome(undefined), outcome("http://credential-proxy.example:8080"), outcome(""), outcome("http://other-proxy.example:8080")], calls }));
+	`;
+
+	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "http://credential-proxy.example:8080", lockProxy: true }));
+	const locked = runConfigProbe(dir, probe);
+	assert.deepEqual(locked.results.slice(0, 2), ["http://credential-proxy.example:8080/", "http://credential-proxy.example:8080/"]);
+	for (const message of locked.results.slice(2)) assert.match(message, /^proxy argument rejected: lockProxy is set in .*; omit proxy to use the configured proxy$/);
+	assert.equal(locked.calls, 2);
+
+	await writeFile(join(dir, "web-search.json"), JSON.stringify({ lockProxy: true }));
+	const unconfigured = runConfigProbe(dir, probe);
+	for (const message of unconfigured.results) assert.match(message, /lockProxy is set in .* but no proxy is configured there/);
+	assert.equal(unconfigured.calls, 0);
+
+	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "http://credential-proxy.example:8080", lockProxy: "yes" }));
+	assert.match(runConfigProbe(dir, probe).results[0], /lockProxy in .* must be true or false/);
 });
 
 test("invalid configured proxy fails closed instead of direct fetching", async (t) => {
@@ -678,4 +753,33 @@ test("generic socks proxy is rejected before transport runs", async (t) => {
 		assert.equal(called, false);
 		await assert.rejects(readFile(logPath, "utf8"), /ENOENT/);
 	});
+});
+
+test("GCE metadata server hosts always bypass proxy transport", (t) => {
+	const previousNoProxy = process.env.NO_PROXY;
+	const previousNoProxyLower = process.env.no_proxy;
+	const previousGceHost = process.env.GCE_METADATA_HOST;
+	delete process.env.NO_PROXY;
+	delete process.env.no_proxy;
+	delete process.env.GCE_METADATA_HOST;
+	t.after(() => {
+		if (previousNoProxy === undefined) delete process.env.NO_PROXY;
+		else process.env.NO_PROXY = previousNoProxy;
+		if (previousNoProxyLower === undefined) delete process.env.no_proxy;
+		else process.env.no_proxy = previousNoProxyLower;
+		if (previousGceHost === undefined) delete process.env.GCE_METADATA_HOST;
+		else process.env.GCE_METADATA_HOST = previousGceHost;
+	});
+
+	assert.equal(isProxyBypassedUrl(new URL("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token")), true);
+	assert.equal(isProxyBypassedUrl(new URL("http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token")), true);
+	assert.equal(isProxyBypassedUrl(new URL("https://example.com/page")), false);
+
+	process.env.GCE_METADATA_HOST = "metadata.test:8080";
+	assert.equal(isProxyBypassedUrl(new URL("http://metadata.test:8080/computeMetadata/v1/instance/service-accounts/default/token")), true);
+	assert.equal(isProxyBypassedUrl(new URL("https://example.com/page")), false);
+
+	process.env.GCE_METADATA_HOST = "http://metadata.test:8080";
+	assert.equal(isProxyBypassedUrl(new URL("http://metadata.test:8080/computeMetadata/v1/instance/service-accounts/default/token")), true);
+	assert.equal(isProxyBypassedUrl(new URL("https://example.com/page")), false);
 });

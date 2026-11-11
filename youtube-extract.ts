@@ -4,9 +4,9 @@ import { activityMonitor } from "./activity.ts";
 import { canAttachImages } from "./feature-config.ts";
 import { isGeminiWebAvailable, queryWithCookies } from "./gemini-web.ts";
 import { isGeminiApiAvailableWithVideo, queryGeminiApiWithVideo } from "./gemini-api.ts";
-import { isPerplexityAvailable, searchWithPerplexity } from "./perplexity.ts";
+import { askPerplexity, isPerplexityAvailable } from "./perplexity.ts";
 import { extractHeadingTitle, type ExtractedContent, type FrameResult, type VideoFrame } from "./extract.ts";
-import { formatSeconds, readExecError, isTimeoutError, trimErrorText, mapFfmpegError, getWebSearchConfigPath } from "./utils.ts";
+import { formatSeconds, readExecError, isTimeoutError, trimErrorText, mapFfmpegError, getWebSearchConfigPath, FRAME_SCALE_FILTER } from "./utils.ts";
 
 const CONFIG_PATH = getWebSearchConfigPath();
 
@@ -175,7 +175,7 @@ async function extractFrameFromStream(streamUrl: string, seconds: number): Promi
 	try {
 		const buffer = execFileSync("ffmpeg", [
 			"-ss", String(seconds), "-i", streamUrl,
-			"-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
+			"-frames:v", "1", "-vf", FRAME_SCALE_FILTER, "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
 		], { maxBuffer: 5 * 1024 * 1024, timeout: 30000, stdio: ["pipe", "pipe", "pipe"] });
 		if (buffer.length === 0) return { error: "ffmpeg failed: empty output" };
 		return { data: buffer.toString("base64"), mimeType: "image/jpeg" };
@@ -302,10 +302,7 @@ async function tryPerplexity(
 			? `Summarize this YouTube video in detail: ${url}`
 			: `${prompt} YouTube video: ${url}`;
 
-		const { answer } = await searchWithPerplexity(
-			perplexityQuery,
-			{ signal },
-		);
+		const answer = await askPerplexity(perplexityQuery, { signal });
 
 		if (!answer) return null;
 

@@ -116,6 +116,23 @@ test("summary generation only uses models in the host's resolved scope", async (
 	assert.equal(included.meta.model, "anthropic/claude-haiku-4-5");
 });
 
+test("fallback reason names every default summary model that could not be used", async () => {
+	const haiku = { provider: "anthropic", id: "claude-haiku-4-5" };
+	const context = {
+		modelRegistry: {
+			find: () => undefined,
+			getAvailable: () => [haiku, { provider: "deepseek", id: "deepseek-v4-flash" }],
+			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test-key" }),
+		},
+		scopedModels: [{ model: haiku }],
+	};
+	const result = await generateSummaryDraft(summaryResults, context, undefined, undefined, undefined, () => Promise.reject(new Error("rate limited")), 1000);
+	assert.equal(result.meta.fallbackReason, "summary-model-unavailable: none of the 6 summary models could be used: "
+		+ "openai-codex/gpt-5.6-luna (not found), openai-codex/gpt-5.6-terra (not found), google/gemini-3.6-flash (not found), "
+		+ "openai/gpt-5-mini (not found), deepseek/deepseek-v4-flash (not enabled), anthropic/claude-haiku-4-5 (rate limited); "
+		+ "set summaryModel in web-search.json to a model you can use");
+});
+
 test("summary generation resolves preferred models through routed providers", async () => {
 	const routedModel = { provider: "openrouter", id: "anthropic/claude-haiku-4-5" };
 	let completeCalled = false;
@@ -314,7 +331,7 @@ test("summary generation deadline config defaults, validates, caps, and reaches 
 	assert.equal(await summaryGenerationDeadline({ summaryGenerationDeadlineMs: "150000" }), 30_000);
 	assert.equal(await summaryGenerationDeadline({ summaryGenerationDeadlineMs: 600_001 }), 600_000);
 	assert.match(indexSrc, /const MAX_SUMMARY_GENERATION_DEADLINE_MS = 600_000/);
-	assert.match(indexSrc, /generateSummaryDraft\(\s*selectedResults,\s*summaryContext,\s*signal,\s*modelOverride,\s*feedback,\s*undefined,\s*getSummaryGenerationDeadlineMs\(\),\s*getSummaryInstructions\(\),\s*\)/);
+	assert.match(indexSrc, /generateSummaryDraft\(\s*selectedResults,[\s\S]*?getSummaryGenerationDeadlineMs\(\),\s*getSummaryInstructions\(\),/);
 	assert.equal((indexSrc.match(/getSummaryGenerationDeadlineMs\(\)/g) ?? []).length, 3);
 	assert.match(readmeSrc, /"summaryGenerationDeadlineMs": 30000/);
 	assert.match(readmeSrc, /summaryGenerationDeadlineMs.*capped at `600000`/);

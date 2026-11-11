@@ -7,6 +7,7 @@ import { test } from "node:test";
 
 const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
 const indexModuleUrl = new URL("../index.ts", import.meta.url).href;
+const coreModuleUrl = new URL("../web-tool-core.ts", import.meta.url).href;
 
 async function createConfig(config) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-search-routing-"));
@@ -56,6 +57,72 @@ test("configured routing follows order after a selected network failure and retu
 	assert.equal(output.provider, "tavily");
 	assert.equal(output.answer, "Tavily route answer");
 	assert.deepEqual(output.calls, ["https://api.search.brave.com/res/v1/web/search?q=ordered+route&count=5", "https://api.tavily.com/search"]);
+});
+
+test("configured routing falls back when a provider request times out, but stops on a caller cancel", async () => {
+	const home = await createConfig({
+		searchRouting: { providers: ["brave", "tavily"], fallbackOn: ["network"] },
+	});
+	const child = runChild(`
+		const { search } = await import(${JSON.stringify(searchModuleUrl)});
+		const run = async (failBrave, signal) => {
+			const calls = [];
+			globalThis.fetch = async (url) => {
+				calls.push(String(url).includes("brave") ? "brave" : "tavily");
+				if (String(url).startsWith("https://api.search.brave.com/")) failBrave();
+				return new Response(JSON.stringify({ answer: "Tavily route answer", results: [] }), { status: 200 });
+			};
+			try {
+				const result = await search("timeout route", { provider: "auto", signal });
+				return { provider: result.provider, calls };
+			} catch (error) {
+				return { error: String(error.message), calls };
+			}
+		};
+		const timedOut = await run(() => { throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); });
+		const controller = new AbortController();
+		const cancelled = await run(() => { controller.abort(); throw controller.signal.reason; }, controller.signal);
+		console.log(JSON.stringify({ timedOut, cancelled }));
+	`, {
+		PI_CODING_AGENT_DIR: home,
+		BRAVE_API_KEY: "brave-test-key",
+		TAVILY_API_KEY: "tavily-test-key",
+	});
+
+	assert.equal(child.status, 0, child.stderr);
+	const output = JSON.parse(child.stdout.trim());
+	assert.deepEqual(output.timedOut, { provider: "tavily", calls: ["brave", "tavily"] });
+	assert.match(output.cancelled.error, /abort/i);
+	assert.deepEqual(output.cancelled.calls, ["brave"]);
+});
+
+test("configured routing falls back when a provider times out while reading the response body", async () => {
+	const home = await createConfig({
+		searchRouting: { providers: ["tavily", "brave"], fallbackOn: ["network"] },
+	});
+	const child = runChild(`
+		const { search } = await import(${JSON.stringify(searchModuleUrl)});
+		const calls = [];
+		globalThis.fetch = async (url) => {
+			if (String(url).includes("tavily")) {
+				calls.push("tavily");
+				return new Response(new ReadableStream({
+					pull(controller) { controller.error(new DOMException("The operation was aborted due to timeout", "TimeoutError")); },
+				}), { status: 200 });
+			}
+			calls.push("brave");
+			return new Response(JSON.stringify({ web: { results: [{ title: "Brave result", url: "https://example.com/brave", description: "Brave" }] } }), { status: 200 });
+		};
+		const result = await search("body timeout route", { provider: "auto" });
+		console.log(JSON.stringify({ provider: result.provider, calls }));
+	`, {
+		PI_CODING_AGENT_DIR: home,
+		BRAVE_API_KEY: "brave-test-key",
+		TAVILY_API_KEY: "tavily-test-key",
+	});
+
+	assert.equal(child.status, 0, child.stderr);
+	assert.deepEqual(JSON.parse(child.stdout.trim()), { provider: "brave", calls: ["tavily", "brave"] });
 });
 
 test("configured routing fails closed on quota errors not selected by fallbackOn", async () => {
@@ -223,8 +290,8 @@ test("legacy single-provider config takes precedence over searchRouting", async 
 		const calls = [];
 		globalThis.fetch = async (url) => {
 			calls.push(String(url));
-			if (String(url) === "https://api.perplexity.ai/chat/completions") {
-				return new Response(JSON.stringify({ choices: [{ message: { content: "Perplexity answer" } }], citations: [] }), { status: 200 });
+			if (String(url) === "https://api.perplexity.ai/search") {
+				return new Response(JSON.stringify({ id: "search-id", results: [] }), { status: 200 });
 			}
 			throw new Error("Routing provider must not run");
 		};
@@ -241,7 +308,7 @@ test("legacy single-provider config takes precedence over searchRouting", async 
 	assert.equal(child.status, 0, child.stderr);
 	assert.deepEqual(JSON.parse(child.stdout.trim()), {
 		provider: "perplexity",
-		calls: ["https://api.perplexity.ai/chat/completions"],
+		calls: ["https://api.perplexity.ai/search"],
 	});
 });
 
@@ -572,6 +639,87 @@ test("a Hosted response without web_search_call is invalid and can fall back", a
 	});
 });
 
+for (const scenario of [
+	{ name: "quoting a rate_limit code", zone: "pi_serp", body: JSON.stringify({ error: "rate_limit_exceeded" }) },
+	{ name: "for a zone named rate_limit_exceeded", zone: "rate_limit_exceeded", body: "<html>oops</html>" },
+]) {
+	test(`a billed Bright Data 200 ${scenario.name} fails as invalid-response, not quota`, async () => {
+		const home = await createConfig({
+			searchRouting: { providers: ["brightdata", "tavily"], fallbackOn: ["quota"] },
+		});
+		const child = runChild(`
+			const calls = [];
+			globalThis.fetch = async (url) => {
+				calls.push(String(url));
+				if (String(url) === "https://api.brightdata.com/request") return new Response(${JSON.stringify(scenario.body)}, { status: 200 });
+				if (String(url) === "https://api.tavily.com/search") throw new Error("Tavily must not run");
+				throw new Error("Unexpected fetch " + url);
+			};
+			const { search } = await import(${JSON.stringify(searchModuleUrl)});
+			try {
+				await search("billed route", { provider: "auto" });
+				console.log(JSON.stringify({ ok: true, calls }));
+			} catch (error) {
+				console.log(JSON.stringify({ ok: false, error: String(error), calls }));
+			}
+		`, {
+			PI_CODING_AGENT_DIR: home,
+			BRIGHTDATA_API_KEY: "bd-test-key",
+			BRIGHTDATA_SERP_ZONE: scenario.zone,
+			TAVILY_API_KEY: "tavily-test-key",
+		});
+
+		assert.equal(child.status, 0, child.stderr);
+		const output = JSON.parse(child.stdout.trim());
+		assert.equal(output.ok, false);
+		assert.match(output.error, /brightdata search failed \(invalid-response\)/);
+		assert.deepEqual(output.calls, ["https://api.brightdata.com/request"]);
+	});
+}
+
+for (const scenario of [
+	{ name: "server_error", fallbackOn: ["transient"], error: { type: "server_error", code: "internal_error", message: "backend exploded" } },
+	{ name: "rate_limit_exceeded", fallbackOn: ["quota"], error: { type: "requests", code: "rate_limit_exceeded", message: "slow down" } },
+	{ name: "unrecognised", fallbackOn: ["invalid-response"], error: { type: "mystery", code: "odd_failure", message: "something broke" } },
+	{ name: "subscription usage limit", fallbackOn: ["quota"], error: { type: "invalid_request_error", code: "subscription_sharing_usage_limit_exceeded", message: "The ChatGPT user has reached their Subscription Sharing usage limit." } },
+	{ name: "permission", fallbackOn: ["invalid-response", "transient", "quota"], error: { type: "permission_error", code: "forbidden", message: "Project does not have access to web search" }, failsAs: "auth" },
+	{ name: "authentication_error", fallbackOn: ["invalid-response", "transient", "quota"], error: { type: "authentication_error", code: "invalid_api_key", message: "Incorrect API key provided" }, failsAs: "auth" },
+	{ name: "internal_error", fallbackOn: ["transient"], error: { code: "internal_error", message: "The server had an error while processing your request" } },
+]) {
+	test(`an OpenAI ${scenario.name} stream error ${scenario.failsAs ? `fails as ${scenario.failsAs}` : "can fall back"} with fallbackOn ${scenario.fallbackOn}`, async () => {
+		const home = await createConfig({
+			searchRouting: { providers: ["openai", "tavily"], fallbackOn: scenario.fallbackOn },
+		});
+		const child = runChild(`
+			const calls = [];
+			const events = [{ type: "response.created", response: { status: "in_progress" } }, { type: "error", error: ${JSON.stringify(scenario.error)} }];
+			globalThis.fetch = async (url) => {
+				const target = String(url);
+				calls.push(target);
+				if (target === "https://api.openai.com/v1/responses") return new Response(events.map((e) => "data: " + JSON.stringify(e) + "\\n").join("\\n"), { status: 200, headers: { "content-type": "text/event-stream" } });
+				if (target === "https://api.tavily.com/search") return new Response(JSON.stringify({ answer: "Tavily fallback answer", results: [] }), { status: 200 });
+				throw new Error("Unexpected fetch: " + target);
+			};
+			const { search } = await import(${JSON.stringify(searchModuleUrl)});
+			try {
+				const result = await search("stream error route", { provider: "auto" });
+				console.log(JSON.stringify({ provider: result.provider, calls }));
+			} catch (err) {
+				console.log(JSON.stringify({ error: err.message.split(":")[0], calls }));
+			}
+		`, {
+			PI_CODING_AGENT_DIR: home,
+			OPENAI_API_KEY: "openai-test-key",
+			TAVILY_API_KEY: "tavily-test-key",
+		});
+
+		assert.equal(child.status, 0, child.stderr);
+		assert.deepEqual(JSON.parse(child.stdout.trim()), scenario.failsAs
+			? { error: `openai search failed (${scenario.failsAs})`, calls: ["https://api.openai.com/v1/responses"] }
+			: { provider: "tavily", calls: ["https://api.openai.com/v1/responses", "https://api.tavily.com/search"] });
+	});
+}
+
 test("useCurrentModel is strictly validated", async () => {
 	const home = await createConfig({ searchRouting: { providers: ["openai", "tavily"], useCurrentModel: "yes", fallbackOn: ["network"] } });
 	const child = runChild(`
@@ -610,4 +758,75 @@ test("Curator auto default follows the same current-model Hosted Search eligibil
 
 	assert.equal(child.status, 0, child.stderr);
 	assert.deepEqual(JSON.parse(child.stdout.trim()), { official: "openai", proxy: "tavily" });
+});
+
+test("a default provider array falls back to searchRouting only when every array provider fails", async () => {
+	const home = await createConfig({
+		provider: ["brave", "perplexity"],
+		searchRouting: { providers: ["brave", "tavily"], fallbackOn: ["transient"] },
+	});
+	const child = runChild(`
+		const calls = [];
+		globalThis.fetch = async (input, init) => {
+			const url = String(input instanceof Request ? input.url : input);
+			const query = url.startsWith("https://api.search.brave.com/") ? new URL(url).searchParams.get("q") : JSON.parse(init.body).query;
+			calls.push(new URL(url).host + " " + query);
+			if (url.startsWith("https://api.search.brave.com/")) return new Response("unavailable", { status: 500 });
+			if (url === "https://api.perplexity.ai/search") {
+				if (query === "mixed") return new Response("bad key", { status: 401 });
+				if (query !== "one succeeds") return new Response("unavailable", { status: 503 });
+				return Response.json({ id: "search-id", results: [{ title: "Perplexity", url: "https://example.com/perplexity", snippet: "Perplexity result" }] });
+			}
+			if (url === "https://api.tavily.com/search") {
+				return Response.json({ answer: "Tavily route answer", results: [{ title: "Tavily", url: "https://example.com/tavily", content: "Tavily result" }] });
+			}
+			throw new Error("Unexpected fetch " + url);
+		};
+		const { createStandaloneWebToolCore } = await import(${JSON.stringify(coreModuleUrl)});
+		const core = createStandaloneWebToolCore();
+		const summarize = (result) => ({ isError: result.isError ?? false, providers: result.details.queryProviders?.[0]?.providers, text: result.content[0].text });
+		const out = {
+			fallback: summarize(await core.webSearch({ query: "both fail" })),
+			partial: summarize(await core.webSearch({ query: "one succeeds" })),
+			mixed: summarize(await core.webSearch({ query: "mixed" })),
+			explicit: summarize(await core.webSearch({ query: "explicit array", provider: ["brave", "perplexity"] })),
+			explicitList: summarize(await core.webSearch({ query: "explicit list", provider: "brave,perplexity" })),
+		};
+		console.log(JSON.stringify({ out, calls }));
+	`, {
+		PI_CODING_AGENT_DIR: home,
+		BRAVE_API_KEY: "brave-test-key",
+		PERPLEXITY_API_KEY: "perplexity-test-key",
+		TAVILY_API_KEY: "tavily-test-key",
+	});
+
+	assert.equal(child.status, 0, child.stderr);
+	const { out, calls } = JSON.parse(child.stdout.trim().split("\n").at(-1));
+	// Both array providers failed with transient errors: the untried routing provider answers.
+	assert.equal(out.fallback.isError, false);
+	assert.deepEqual(out.fallback.providers, ["tavily"]);
+	// One array provider succeeded: merged array result, no routing.
+	assert.equal(out.partial.isError, false);
+	assert.deepEqual(out.partial.providers, ["perplexity"]);
+	// One failure (401) is not a fallbackOn type: the array error stands, no routing.
+	assert.equal(out.mixed.isError, true);
+	assert.match(out.mixed.text, /Selected-provider search failed/);
+	// A per-call array or comma-separated list stays strict.
+	for (const explicit of [out.explicit, out.explicitList]) {
+		assert.equal(explicit.isError, true);
+		assert.match(explicit.text, /Selected-provider search failed/);
+	}
+	assert.deepEqual(calls.sort(), [
+		"api.perplexity.ai both fail",
+		"api.perplexity.ai explicit array",
+		"api.perplexity.ai explicit list",
+		"api.perplexity.ai mixed",
+		"api.perplexity.ai one succeeds",
+		"api.search.brave.com both fail",
+		"api.search.brave.com explicit array",
+		"api.search.brave.com explicit list",
+		"api.search.brave.com mixed",
+		"api.search.brave.com one succeeds",
+		"api.tavily.com both fail",
+	]);
 });

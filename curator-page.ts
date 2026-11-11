@@ -33,6 +33,7 @@ function buildProviderButtons(
 		{ value: "bocha", label: "Bocha", available: available.bocha },
 		{ value: "ollama", label: "Ollama", available: available.ollama },
 		{ value: "searxng", label: "SearXNG", available: available.searxng },
+		{ value: "degoog", label: "degoog", available: available.degoog },
 		{ value: "duckduckgo", label: "DuckDuckGo", available: available.duckduckgo },
 		{ value: "perplexity", label: "Perplexity", available: available.perplexity },
 		{ value: "gemini", label: "Gemini", available: available.gemini },
@@ -50,6 +51,19 @@ function buildProviderButtons(
 		{ value: "baizhi", label: "Baizhi", available: available.baizhi },
 		{ value: "zai", label: "Z.ai", available: available.zai },
 		{ value: "valyu", label: "Valyu", available: available.valyu },
+		{ value: "keenable", label: "Keenable", available: available.keenable },
+		{ value: "ceramic", label: "Ceramic", available: available.ceramic },
+		{ value: "linkup", label: "Linkup", available: available.linkup },
+		{ value: "ninerouter", label: "9router", available: available.ninerouter },
+		{ value: "cloudflare", label: "Cloudflare", available: available.cloudflare },
+		{ value: "searchapi", label: "SearchApi", available: available.searchapi },
+		{ value: "outcrawl", label: "Outcrawl", available: available.outcrawl },
+		{ value: "sofya", label: "Sofya", available: available.sofya },
+		{ value: "cloro", label: "cloro", available: available.cloro },
+		{ value: "autom", label: "Autom", available: available.autom },
+		{ value: "specstream", label: "SpecStream", available: available.specstream },
+		{ value: "tabstack", label: "Tabstack", available: available.tabstack },
+		{ value: "deepseek", label: "DeepSeek", available: available.deepseek },
 	];
 
 	return providers
@@ -736,6 +750,11 @@ main {
   color: #a6e3a1;
   background: rgba(166, 227, 161, 0.14);
   border-color: rgba(166, 227, 161, 0.3);
+}
+.provider-tag.provider-tabstack {
+  color: #f5c2e7;
+  background: rgba(245, 194, 231, 0.14);
+  border-color: rgba(245, 194, 231, 0.3);
 }
 .provider-tag.provider-jina {
   color: #f9e2af;
@@ -1476,7 +1495,7 @@ const SCRIPT = `(function() {
   var token = DATA.sessionToken;
   var timeoutSec = DATA.timeout;
   var queries = Array.isArray(DATA.queries) ? DATA.queries : [];
-  var providers = ["auto", "all", "openai", "exa", "brave", "parallel", "parallel-mcp", "tinyfish", "search1api", "searchinfinity", "querit", "tavily", "firecrawl", "jina", "serpdive", "kagi", "bocha", "ollama", "searxng", "duckduckgo", "perplexity", "gemini", "kimi", "anysearch", "xcrawl", "xai", "mistral", "brightdata", "serpbase", "serpapi", "serper", "serply", "valyu", "baizhi", "you", "zai"];
+  var providers = ["auto", "all", "openai", "exa", "brave", "parallel", "parallel-mcp", "tinyfish", "search1api", "searchinfinity", "querit", "tavily", "firecrawl", "jina", "serpdive", "kagi", "bocha", "ollama", "searxng", "degoog", "duckduckgo", "perplexity", "gemini", "kimi", "anysearch", "xcrawl", "xai", "mistral", "brightdata", "serpbase", "serpapi", "serper", "serply", "valyu", "baizhi", "you", "zai", "keenable", "ceramic", "deepseek", "linkup", "ninerouter", "cloudflare", "searchapi", "outcrawl", "sofya", "cloro", "autom", "specstream", "tabstack"];
   var availProviders = DATA.availableProviders && typeof DATA.availableProviders === "object" ? DATA.availableProviders : {};
   var workflow = "summary-review";
   var initialDefaultProvider = typeof DATA.defaultProvider === "string" ? DATA.defaultProvider : "exa";
@@ -1690,6 +1709,7 @@ const SCRIPT = `(function() {
     if (provider === "searchinfinity") return "Searchinfinity";
     if (provider === "querit") return "Querit";
     if (provider === "tavily") return "Tavily";
+    if (provider === "tabstack") return "Tabstack";
     if (provider === "firecrawl") return "Firecrawl";
     if (provider === "jina") return "Jina";
     if (provider === "serpdive") return "SERPdive";
@@ -1697,6 +1717,7 @@ const SCRIPT = `(function() {
     if (provider === "bocha") return "Bocha";
     if (provider === "ollama") return "Ollama";
     if (provider === "searxng") return "SearXNG";
+    if (provider === "degoog") return "degoog";
     if (provider === "duckduckgo") return "DuckDuckGo";
     if (provider === "perplexity") return "Perplexity";
     if (provider === "exa") return "Exa";
@@ -1715,6 +1736,18 @@ const SCRIPT = `(function() {
     if (provider === "baizhi") return "Baizhi";
     if (provider === "zai") return "Z.ai";
     if (provider === "valyu") return "Valyu";
+    if (provider === "keenable") return "Keenable";
+    if (provider === "ceramic") return "Ceramic";
+    if (provider === "linkup") return "Linkup";
+    if (provider === "ninerouter") return "9router";
+    if (provider === "cloudflare") return "Cloudflare";
+    if (provider === "searchapi") return "SearchApi";
+    if (provider === "outcrawl") return "Outcrawl";
+    if (provider === "sofya") return "Sofya";
+    if (provider === "cloro") return "cloro";
+    if (provider === "autom") return "Autom";
+    if (provider === "specstream") return "SpecStream";
+    if (provider === "deepseek") return "DeepSeek";
     return "Unknown";
   }
 

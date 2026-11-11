@@ -9,7 +9,9 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const publishScript = fileURLToPath(new URL("../scripts/publish.js", import.meta.url));
-const WAIT_TIMEOUT_MS = 5000;
+// Only a hang guard: these tests finish in about a second, but spawning node
+// child processes on a loaded CI runner or during the full suite has taken over 5s.
+const WAIT_TIMEOUT_MS = 30_000;
 
 async function withTimeout(promise, message) {
 	let timer;
@@ -44,9 +46,10 @@ async function createFixture(mode) {
 
 	const fakeNpm = join(bin, "fake-npm.mjs");
 	await writeFile(fakeNpm, `#!/usr/bin/env node
-import { access, readFile, watch, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 const root = process.cwd();
 const signalFile = join(root, "terminated");
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -62,17 +65,15 @@ await writeFile(manifestPath, JSON.stringify(pkg, null, 2) + "\\n");
 await writeFile(join(root, "args"), JSON.stringify(process.argv.slice(2)));
 console.log(process.pid);
 const continuePath = join(root, "continue");
-const watcher = watch(root);
-try {
+// Poll rather than watch: fs.promises.watch only attaches on first iteration,
+// so a "continue" written right after the ready line could be missed.
+for (;;) {
   try {
     await access(continuePath);
+    break;
   } catch {
-	for await (const event of watcher) {
-	  if (event.filename === "continue") break;
-	}
+    await sleep(10);
   }
-} finally {
-  await watcher.return();
 }
 process.exit(Number(process.env.FAKE_NPM_EXIT));
 `);

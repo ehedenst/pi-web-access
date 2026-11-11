@@ -113,6 +113,64 @@ test("get_search_content returns requested fetched content slices", async () => 
 	assert.match(text, /urlIndex: 0, offset: 30005, limit: 5/);
 });
 
+test("get_search_content pages never split a surrogate pair", async () => {
+	const tool = getContentTool();
+	const content = `a${"😀".repeat(6)}b`;
+	storeFetchedContent(content);
+	storeResult("emoji-search", {
+		id: "emoji-search",
+		type: "search",
+		timestamp: Date.now(),
+		queries: [{ query: "emoji", answer: "", results: [{ title: "Emoji", url: "https://example.com/emoji", snippet: content }], error: null }],
+	});
+	const searchContent = (await tool.execute("call", { responseId: "emoji-search", queryIndex: 0 })).content[0].text;
+	const header = "# Large Page\n\n";
+	const sources = [
+		{ full: content, page: (offset, limit) => ({ responseId: "large-fetch", urlIndex: 0, offset, limit }), skip: header.length },
+		{ full: searchContent, page: (offset, limit) => ({ responseId: "emoji-search", queryIndex: 0, offset, limit }), skip: 0 },
+	];
+	for (const { full, page, skip } of sources) {
+		for (const limit of [1, 2, 3]) {
+			const pages = [];
+			for (let offset = 0; offset !== null && offset < full.length;) {
+				const result = await tool.execute("call", page(offset, limit));
+				const slice = result.content[0].text.slice(skip, skip + result.details.returnedChars);
+				assert.ok(slice.length > 0 && slice.isWellFormed(), `ill-formed page at offset ${offset} with limit ${limit}: ${JSON.stringify(slice)}`);
+				if (result.details.nextOffset !== null) assert.match(result.content[0].text, new RegExp(`offset: ${result.details.nextOffset}, limit: ${limit}`));
+				pages.push(slice);
+				offset = result.details.nextOffset;
+			}
+			assert.equal(pages.join(""), full);
+		}
+	}
+});
+
+test("get_search_content keeps surrogate pairs whole when a full page shrinks for its instructions", async () => {
+	const tool = getContentTool();
+	// One of the two prefix parities puts the shrunken page end inside a pair.
+	for (const prefix of ["", "a"]) {
+		const snippet = `${prefix}${"😀".repeat(20_000)}`;
+		storeResult("emoji-overflow", {
+			id: "emoji-overflow",
+			type: "search",
+			timestamp: Date.now(),
+			queries: [{ query: "emoji", answer: "", results: [{ title: "Emoji", url: "https://example.com/emoji", snippet }], error: null }],
+		});
+		const pages = [];
+		for (let offset = 0; offset !== null;) {
+			const result = await tool.execute("call", { responseId: "emoji-overflow", queryIndex: 0, offset, limit: 30_000 });
+			const text = result.content[0].text;
+			const slice = text.slice(0, result.details.returnedChars);
+			assert.ok(text.length <= 30_000, `page at offset ${offset} is ${text.length} chars`);
+			assert.ok(slice.isWellFormed(), `ill-formed page at offset ${offset} (prefix ${JSON.stringify(prefix)})`);
+			pages.push(slice);
+			offset = result.details.nextOffset;
+		}
+		assert.ok(pages.length > 1);
+		assert.ok(pages.join("").includes(snippet), "joined pages lose content");
+	}
+});
+
 test("get_search_content rejects unsafe fetched content ranges", async () => {
 	const tool = getContentTool();
 	storeFetchedContent("short content");
@@ -152,6 +210,16 @@ test("get_search_content rejects unsafe fetched content ranges", async () => {
 	assert.equal(researchOutOfRange.details.error, "Offset out of range");
 	assert.match(researchOutOfRange.content[0].text, /responseId "stored-research"/);
 	assert.match(researchOutOfRange.content[0].text, /valid range is 0-/);
+	const researchPage = await tool.execute("call", { responseId: "stored-research", limit: 10 });
+	assert.match(researchPage.content[0].text, /responseId: "stored-research", offset: 10, limit: 10 \}\) for the next slice/);
+	const researchLastPage = await tool.execute("call", { responseId: "stored-research", offset: researchPage.details.contentLength - 5 });
+	assert.doesNotMatch(researchLastPage.content[0].text, /next slice/);
+	const largeArtifact = buildResearchArtifact({ query: "large claim", results: [], summary: "S".repeat(40_000) });
+	largeArtifact.id = "large-research";
+	storeResearchArtifact(largeArtifact);
+	const fullPage = await tool.execute("call", { responseId: "large-research", limit: 30_000 });
+	assert.ok(fullPage.content[0].text.length <= 30_000);
+	assert.match(fullPage.content[0].text, new RegExp(`offset: ${fullPage.details.nextOffset}, limit: 30000 \\}\\) for the next slice`));
 
 	const researchFind = await tool.execute("call", {
 		responseId: "stored-research",
@@ -164,6 +232,40 @@ test("get_search_content rejects unsafe fetched content ranges", async () => {
 	assert.equal(researchFind.details.matchCount, 1);
 	assert.match(researchFind.content[0].text, /^Text matches \(case-insensitive\)/);
 	assert.match(researchFind.content[0].text, /Unique bridge research summary marker/);
+});
+
+test("get_search_content defaults to the only stored URL when url and urlIndex are omitted", async () => {
+	const tool = getContentTool();
+	storeFetchedContent("short content with a unique needle");
+
+	const findResult = await tool.execute("call", { responseId: "large-fetch", findText: "needle" });
+	assert.equal(findResult.details.error, undefined);
+	assert.equal(findResult.details.url, "https://example.com/large");
+	assert.match(findResult.content[0].text, /needle/);
+
+	const sliceResult = await tool.execute("call", { responseId: "large-fetch" });
+	assert.equal(sliceResult.details.error, undefined);
+	assert.equal(sliceResult.details.url, "https://example.com/large");
+	assert.match(sliceResult.content[0].text, /short content with a unique needle/);
+});
+
+test("get_search_content still asks for a URL when multiple stored URLs exist", async () => {
+	const tool = getContentTool();
+	storeResult("multi-fetch", {
+		id: "multi-fetch",
+		type: "fetch",
+		timestamp: Date.now(),
+		urls: [
+			{ url: "https://example.com/first", title: "First", content: "first content", error: null },
+			{ url: "https://example.com/second", title: "Second", content: "second content", error: null },
+		],
+	});
+
+	const result = await tool.execute("call", { responseId: "multi-fetch" });
+	assert.equal(result.details.error, "No URL specified");
+	assert.match(result.content[0].text, /Specify url or urlIndex/);
+	assert.match(result.content[0].text, /0: https:\/\/example\.com\/first/);
+	assert.match(result.content[0].text, /1: https:\/\/example\.com\/second/);
 });
 
 test("get_search_content normalizes bridge defaults for search matches", async () => {

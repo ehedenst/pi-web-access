@@ -13,6 +13,8 @@ export interface ResearchSource {
 	url: string;
 	title: string;
 	snippet?: string;
+	/** "generated" when the snippet is the search provider's own answer text around a citation, not page text. */
+	snippet_source?: "generated";
 	fetch_timestamp?: number;
 	content_hash?: string;
 	quality: SourceQuality;
@@ -27,6 +29,8 @@ export interface ResearchPassage {
 	text: string;
 	extraction_span?: { start: number; end: number };
 	content_hash?: string;
+	/** "provider_summary" marks text written by the search provider (for example OpenAI or xAI answer text), not quoted from the page. */
+	origin?: "provider_summary";
 }
 
 export interface ClaimAssessment {
@@ -100,26 +104,43 @@ export function hashContent(text: string): string {
 interface Span { text: string; start: number; end: number }
 
 function tokenize(value: string): string[] {
-	return [...new Set(value.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 3))];
+	// Short words are mostly noise ("the", "for"), but short acronyms and numbers ("API", "TLS", "429") carry meaning.
+	return [...new Set(value.split(/[^A-Za-z0-9]+/)
+		.filter((term) => term.length > 3 || (term.length > 1 && /^[A-Z0-9]+$/.test(term)))
+		.map((term) => term.length > 3 ? term.toLowerCase() : term))];
 }
 
-function extractRelevantSpans(content: string, hint: string): Span[] {
+/** Long terms match inside words in any case ("stream" in "Streaming"); short acronyms only as whole words in the same case, so "API" skips "rapid" and "US" skips "us". */
+function countMatches(terms: string[], text: string): number {
+	const lower = text.toLowerCase();
+	const words = new Set(text.split(/[^A-Za-z0-9]+/));
+	return terms.filter((term) => term.length > 3 ? lower.includes(term) : words.has(term)).length;
+}
+
+function extractRelevantSpans(content: string, claim: string, snippet: string): Span[] {
 	const sentences: Span[] = [];
-	const sentencePattern = /[^.!?]+(?:[.!?]+(?=\s|$)|$)/g;
-	for (const match of content.matchAll(sentencePattern)) {
-		const raw = match[0];
+	// A sentence ends at punctuation (plus closing quotes, brackets, emphasis or a [n] citation) followed by
+	// whitespace or the end, so "example.com" stays inside its sentence. The lookbehind starts each attempt only at
+	// the beginning of a punctuation run, which keeps the scan linear on long runs such as "!!!…x".
+	const boundary = /(?<![.!?])[.!?]+(?:["'”’)\]*_]|\[\d+\])*(?=\s|$)/g;
+	let segmentStart = 0;
+	const addSentence = (end: number) => {
+		const raw = content.slice(segmentStart, end);
 		const text = raw.trim();
 		if (text.length > 0 && text.length <= 400) {
-			const start = (match.index ?? 0) + raw.indexOf(text);
+			const start = segmentStart + raw.indexOf(text);
 			sentences.push({ text, start, end: start + text.length });
 		}
-	}
-	const terms = tokenize(hint);
-	if (terms.length === 0) return [];
+		segmentStart = end;
+	};
+	for (const match of content.matchAll(boundary)) addSentence(match.index + match[0].length);
+	addSentence(content.length);
+	const claimTerms = tokenize(claim);
+	const snippetTerms = tokenize(snippet);
 	return sentences
-		.map((sentence, index) => ({ sentence, index, score: terms.filter((term) => sentence.text.toLowerCase().includes(term)).length }))
-		.filter((item) => item.score > 0)
-		.sort((a, b) => b.score - a.score || a.index - b.index)
+		.map((sentence, index) => ({ sentence, index, claim: countMatches(claimTerms, sentence.text), snippet: countMatches(snippetTerms, sentence.text) }))
+		.filter((item) => item.claim + item.snippet > 0)
+		.sort((a, b) => b.claim - a.claim || b.snippet - a.snippet || a.index - b.index)
 		.slice(0, 3)
 		.map(({ sentence }) => sentence);
 }
@@ -128,7 +149,7 @@ function passageId(sourceRank: number, index: number): string {
 	return `p-${sourceRank}-${index}`;
 }
 
-export function buildPassages(sources: ResearchSource[], fetched: ExtractedContent[] = [], hint = ""): ResearchPassage[] {
+export function buildPassages(sources: ResearchSource[], fetched: ExtractedContent[] = [], claim = ""): ResearchPassage[] {
 	const passages: ResearchPassage[] = [];
 	const fetchedByUrl = new Map(fetched.map((item) => [item.url, item]));
 	for (const source of sources) {
@@ -139,12 +160,13 @@ export function buildPassages(sources: ResearchSource[], fetched: ExtractedConte
 				source_rank: source.rank,
 				text: source.snippet,
 				content_hash: hashContent(source.snippet),
+				// The provider's paraphrase around a citation, not a quote, so it is never presented as page text.
+				...(source.snippet_source === "generated" ? { origin: "provider_summary" as const } : {}),
 			});
 		}
 		const page = fetchedByUrl.get(source.url);
 		if (page && !page.error && page.content) {
-			const passageHint = source.snippet?.trim() || hint;
-			for (const [index, span] of extractRelevantSpans(page.content, passageHint).entries()) {
+			for (const [index, span] of extractRelevantSpans(page.content, claim, source.snippet ?? "").entries()) {
 				passages.push({
 					passage_id: passageId(source.rank, index + 1),
 					source_url: source.url,
@@ -202,6 +224,7 @@ export function buildResearchArtifact(input: BuildArtifactInput): ResearchArtifa
 			url: result.url,
 			title: result.title,
 			snippet: result.snippet,
+			...(result.snippetSource === "generated" && result.snippet ? { snippet_source: "generated" as const } : {}),
 			quality: classifySource(result.url),
 			fetched,
 			...(page ? { fetch_timestamp: Date.now() } : {}),

@@ -141,7 +141,7 @@ test("answerFromPage gives a per-call model precedence over valid and partial co
 	assert.equal(call.getRequest().model, override);
 });
 
-test("answerFromPage adds opencode session headers on the registry path", async () => {
+test("answerFromPage passes the session id to the model call", async () => {
 	const openCodeModel = pageModel("gpt-5.6-luna");
 	openCodeModel.provider = "opencode-go";
 	openCodeModel.baseUrl = "https://opencode.ai/zen/go/v1";
@@ -157,55 +157,21 @@ test("answerFromPage adds opencode session headers on the registry path", async 
 	);
 
 	const options = getRequest().options;
-	assert.equal(typeof options.transformHeaders, "function");
-	const headers = await options.transformHeaders({ accept: "application/json" });
-	assert.equal(headers["x-opencode-session"], "01a08bfb-e1f6-7044-b797-d9eda1e61eb4");
-	assert.equal(headers["x-opencode-client"], "pi");
-	assert.equal(headers.accept, "application/json");
+	assert.equal(options.sessionId, "01a08bfb-e1f6-7044-b797-d9eda1e61eb4");
+	assert.equal(options.cacheRetention, "none");
+	assert.equal(options.transformHeaders, undefined);
 });
 
-test("answerFromPage adds opencode session headers for an opencode.ai base url", async () => {
-	const routed = pageModel("some-proxied-model");
-	routed.provider = "my-proxy";
-	routed.baseUrl = "https://opencode.ai/zen/go/v1";
+test("answerFromPage omits the session id when the session has none", async () => {
 	await rm(configPath, { force: true });
-	const { ctx, getRequest } = contextFor([routed], { sessionModel: routed, sessionId: "session-abc" });
+	const { ctx, getRequest } = contextFor([pageModel("page-model")]);
 
 	await answerFromPage(
 		{ question: "What is the answer?", pageText: "Content", sourceUrl: "https://example.com" },
 		ctx,
 	);
 
-	const headers = await getRequest().options.transformHeaders({});
-	assert.equal(headers["x-opencode-session"], "session-abc");
-});
-
-test("answerFromPage leaves request headers alone for non-opencode models", async () => {
-	const other = pageModel("page-model");
-	await rm(configPath, { force: true });
-	const { ctx, getRequest } = contextFor([other], { sessionModel: other, sessionId: "session-123" });
-
-	await answerFromPage(
-		{ question: "What is the answer?", pageText: "Content", sourceUrl: "https://example.com" },
-		ctx,
-	);
-
-	assert.equal(getRequest().options.transformHeaders, undefined);
-});
-
-test("answerFromPage omits opencode session headers when no session id is available", async () => {
-	const openCodeModel = pageModel("glm-5.3-flash");
-	openCodeModel.provider = "opencode-go";
-	openCodeModel.baseUrl = "https://opencode.ai/zen/go/v1";
-	await rm(configPath, { force: true });
-	const { ctx, getRequest } = contextFor([openCodeModel], { sessionModel: openCodeModel });
-
-	await answerFromPage(
-		{ question: "What is the answer?", pageText: "Content", sourceUrl: "https://example.com" },
-		ctx,
-	);
-
-	assert.equal(getRequest().options.transformHeaders, undefined);
+	assert.equal(getRequest().options.sessionId, undefined);
 });
 
 test("answerFromPage rejects partial configured answer defaults", async () => {
@@ -281,4 +247,72 @@ test("answerFromPage preserves configured model auth checks", async () => {
 		),
 		/No API key available for answer model test\/configured-model/,
 	);
+});
+
+test("answerFromPage runs when the provider authenticates without an API key", async () => {
+	const configured = pageModel("configured-model");
+	await writeFetchConfig({ answerProvider: "test", answerModel: "configured-model" });
+	const { ctx, getRequest } = contextFor([configured], { auth: { ok: true } });
+
+	const result = await answerFromPage(
+		{ question: "Which model?", pageText: "The configured answer.", sourceUrl: "https://example.com" },
+		ctx,
+	);
+
+	assert.equal(result.text, "The configured answer.");
+	assert.equal(getRequest().model, configured);
+});
+
+// Claude 5.x models reject thinking.type "disabled"; their thinkingLevelMap marks "off" unsupported.
+const CANNOT_DISABLE_THINKING = { off: null, minimal: null, low: "low", medium: "medium", high: "high" };
+
+test("answerFromPage keeps thinking off for models that can disable it", async () => {
+	await rm(configPath, { force: true });
+	for (const model of [pageModel("plain-model"), { ...pageModel("reasoning-model"), reasoning: true }]) {
+		const { ctx, getRequest } = contextFor([model], { sessionModel: model });
+		await answerFromPage({ question: "Q?", pageText: "Content", sourceUrl: "https://example.com" }, ctx);
+		assert.equal(getRequest().options.reasoning, undefined, model.id);
+		assert.equal(getRequest().options.reasoningEffort, undefined, model.id);
+	}
+});
+
+test("answerFromPage requests the lowest supported thinking level when a model cannot disable thinking", async () => {
+	await rm(configPath, { force: true });
+	const model = { ...pageModel("claude-opus-5-5"), reasoning: true, thinkingLevelMap: CANNOT_DISABLE_THINKING };
+	const { ctx, getRequest } = contextFor([model], { sessionModel: model });
+
+	await answerFromPage({ question: "Q?", pageText: "Content", sourceUrl: "https://example.com" }, ctx);
+
+	const options = getRequest().options;
+	assert.equal(options.reasoning, "low");
+	assert.equal(options.reasoningEffort, "low");
+	assert.equal(options.maxTokens, 2_000);
+	assert.equal(options.cacheRetention, "none");
+});
+
+test("answerFromPage passes the clamped thinking level through registry streamSimple", async () => {
+	await rm(configPath, { force: true });
+	const model = { ...pageModel("claude-sonnet-5-5"), reasoning: true, thinkingLevelMap: CANNOT_DISABLE_THINKING };
+	const plain = pageModel("plain-model");
+	const calls = [];
+	const ctx = {
+		model,
+		modelRegistry: {
+			find: (provider, id) => [model, plain].find(m => m.provider === provider && m.id === id),
+			getAvailable: () => [model, plain],
+			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test-key" }),
+			streamSimple: (calledModel, _context, options) => {
+				calls.push({ id: calledModel.id, options });
+				return { result: async () => ({ stopReason: "stop", content: [{ type: "text", text: "Answer." }] }) };
+			},
+		},
+		scopedModels: [],
+	};
+
+	await answerFromPage({ question: "Q?", pageText: "Content", sourceUrl: "https://example.com" }, ctx);
+	await answerFromPage({ question: "Q?", pageText: "Content", sourceUrl: "https://example.com", model: "test/plain-model" }, ctx);
+
+	assert.equal(calls[0].options.reasoning, "low");
+	assert.equal(calls[1].options.reasoning, undefined);
+	assert.equal(calls[1].options.maxTokens, 2_000);
 });

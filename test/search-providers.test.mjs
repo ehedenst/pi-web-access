@@ -49,7 +49,7 @@ function runChild(script, env) {
 	});
 }
 
-test("Brave search applies domain filters in the query and returned results", async () => {
+test("Brave search applies domain filters and strips markup from results", async () => {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-brave-"));
 	const child = runChild(`
 		let capturedUrl = "";
@@ -59,7 +59,7 @@ test("Brave search applies domain filters in the query and returned results", as
 			capturedHeaders = init.headers;
 			return new Response(JSON.stringify({
 				web: { results: [
-					{ title: "GitHub", url: "https://github.com/nicobailon/pi-web-access", description: "repo" },
+					{ title: "Node.js &mdash; <strong>fs</strong> module", url: "https://github.com/nicobailon/pi-web-access", description: "Work with files &amp; directories <strong>fast</strong> &#x110000;" },
 					{ title: "Gist", url: "https://gist.github.com/nicobailon/abc", description: "gist" },
 					{ title: "Example", url: "https://example.com/nope", description: "example" },
 				] },
@@ -90,48 +90,47 @@ test("Brave search applies domain filters in the query and returned results", as
 	assert.match(output.q, /NOT site:gist\.github\.com/);
 	assert.equal(output.count, "20");
 	assert.equal(output.token, "brave-test-key");
-	assert.deepEqual(output.results.map((result) => result.url), ["https://github.com/nicobailon/pi-web-access"]);
+	assert.deepEqual(output.results, [{
+		title: "Node.js — fs module",
+		url: "https://github.com/nicobailon/pi-web-access",
+		snippet: "Work with files & directories fast &#x110000;",
+	}]);
 });
 
-test("Perplexity normalizes invalid result counts", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pi-web-access-perplexity-count-"));
+test("Perplexity searches through the Search API and maps result snippets", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-access-perplexity-search-"));
 	const child = runChild(`
-		globalThis.fetch = async () => new Response(JSON.stringify({
-			choices: [{ message: { content: "answer" } }],
-			citations: ["https://example.com/a", "https://example.com/b", "https://example.com/c", "https://example.com/d", "https://example.com/e"],
-		}), { status: 200, headers: { "content-type": "application/json" } });
-
-		const { searchWithPerplexity } = await import(${JSON.stringify(perplexityModuleUrl)});
-		const negative = await searchWithPerplexity("negative", { numResults: -1 });
-		const nan = await searchWithPerplexity("nan", { numResults: Number.NaN });
-		const decimal = await searchWithPerplexity("decimal", { numResults: 3.8 });
-		console.log(JSON.stringify({ counts: [negative.results.length, nan.results.length, decimal.results.length] }));
-	`, {
-		HOME: home,
-		USERPROFILE: home,
-		PERPLEXITY_API_KEY: "pplx-test-key",
-	});
-
-	assert.equal(child.status, 0, child.stderr);
-	assert.deepEqual(JSON.parse(child.stdout.trim()).counts, [1, 5, 3]);
-});
-
-test("Perplexity retains cited sources beyond numResults", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pi-web-access-perplexity-citations-"));
-	const child = runChild(`
-		globalThis.fetch = async (_url, init) => {
-			const query = JSON.parse(init.body).messages[0].content;
-			const answer = query === "cited" ? "The answer cites [13]." : "The answer has no citations.";
+		const requests = [];
+		globalThis.fetch = async (url, init) => {
+			requests.push({ url: String(url), authorization: init.headers.Authorization, body: JSON.parse(init.body) });
 			return new Response(JSON.stringify({
-				choices: [{ message: { content: answer } }],
-				citations: Array.from({ length: 13 }, (_, index) => "https://example.com/source-" + (index + 1)),
+				id: "search-id",
+				results: [
+					{ title: " First page ", url: "https://example.com/a", snippet: "Page text A", date: "2026-01-01" },
+					{ title: "", url: "https://example.com/b", snippet: "" },
+					{ title: "No URL", snippet: "skipped" },
+					{ title: "C", url: "https://example.com/c", snippet: "Page text C" },
+					{ title: "D", url: "https://example.com/d", snippet: "Page text D" },
+					{ title: "E", url: "https://example.com/e", snippet: "Page text E" },
+					{ title: "F", url: "https://example.com/f", snippet: "Page text F" },
+				],
 			}), { status: 200, headers: { "content-type": "application/json" } });
 		};
 
 		const { searchWithPerplexity } = await import(${JSON.stringify(perplexityModuleUrl)});
-		const cited = await searchWithPerplexity("cited", { numResults: 8 });
-		const uncited = await searchWithPerplexity("uncited", { numResults: 8 });
-		console.log(JSON.stringify({ cited: cited.results, uncitedCount: uncited.results.length }));
+		const filtered = await searchWithPerplexity("filtered", {
+			numResults: 2,
+			recencyFilter: "week",
+			domainFilter: ["example.com", "-reddit.com", "not a domain"],
+		});
+		const negative = await searchWithPerplexity("negative", { numResults: -1 });
+		const nan = await searchWithPerplexity("nan", { numResults: Number.NaN });
+		const decimal = await searchWithPerplexity("decimal", { numResults: 3.8 });
+		console.log(JSON.stringify({
+			requests,
+			filtered,
+			counts: [negative.results.length, nan.results.length, decimal.results.length],
+		}));
 	`, {
 		HOME: home,
 		USERPROFILE: home,
@@ -140,13 +139,54 @@ test("Perplexity retains cited sources beyond numResults", async () => {
 
 	assert.equal(child.status, 0, child.stderr);
 	const output = JSON.parse(child.stdout.trim());
-	assert.equal(output.cited.length, 13);
-	assert.deepEqual(output.cited[12], {
-		title: "Source 13",
-		url: "https://example.com/source-13",
-		snippet: "",
+	assert.deepEqual(output.requests[0], {
+		url: "https://api.perplexity.ai/search",
+		authorization: "Bearer pplx-test-key",
+		body: {
+			query: "filtered",
+			max_results: 2,
+			search_type: "fast",
+			search_context_size: "medium",
+			search_recency_filter: "week",
+			search_domain_filter: ["example.com", "-reddit.com"],
+		},
 	});
-	assert.equal(output.uncitedCount, 8);
+	assert.deepEqual(output.requests.slice(1).map((request) => request.body.max_results), [1, 5, 3]);
+	assert.deepEqual(output.filtered.results, [
+		{ title: "First page", url: "https://example.com/a", snippet: "Page text A" },
+		{ title: "Source 2", url: "https://example.com/b", snippet: "" },
+	]);
+	assert.match(output.filtered.answer, /Page text A\nSource: First page \(https:\/\/example\.com\/a\)/);
+	assert.deepEqual(output.counts, [1, 5, 3]);
+});
+
+test("Perplexity prose answers use Sonar chat completions", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-access-perplexity-answer-"));
+	const child = runChild(`
+		let request = null;
+		globalThis.fetch = async (url, init) => {
+			request = { url: String(url), body: JSON.parse(init.body) };
+			return new Response(JSON.stringify({
+				choices: [{ message: { content: "Video summary" } }],
+				citations: ["https://example.com/source"],
+			}), { status: 200, headers: { "content-type": "application/json" } });
+		};
+
+		const { askPerplexity } = await import(${JSON.stringify(perplexityModuleUrl)});
+		const answer = await askPerplexity("Summarize this video");
+		console.log(JSON.stringify({ request, answer }));
+	`, {
+		HOME: home,
+		USERPROFILE: home,
+		PERPLEXITY_API_KEY: "pplx-test-key",
+	});
+
+	assert.equal(child.status, 0, child.stderr);
+	const output = JSON.parse(child.stdout.trim());
+	assert.equal(output.request.url, "https://api.perplexity.ai/chat/completions");
+	assert.equal(output.request.body.model, "sonar");
+	assert.deepEqual(output.request.body.messages, [{ role: "user", content: "Summarize this video" }]);
+	assert.equal(output.answer, "Video summary");
 });
 
 test("Tavily search uses bearer auth and maps filters/content", async () => {
@@ -440,6 +480,90 @@ test("SearXNG search is SSRF-guarded and preferred first when configured", async
 	assert.equal(output.calls[0].redirect, "manual");
 	assert.deepEqual(output.direct.results, [{ title: "Allowed", url: "https://docs.example.com/a", snippet: "allowed" }]);
 	assert.equal(output.auto.provider, "searxng");
+});
+
+test("SearXNG base URL allows configured loopback without global SSRF allow ranges", async () => {
+	for (const searxngBaseUrl of ["http://localhost:8888", "http://127.0.0.1:8888", "http://[::1]:8888"]) {
+		const home = await mkdtemp(join(tmpdir(), "pi-web-access-searxng-loopback-"));
+		const child = runChild(`
+			const { writeFileSync } = await import("node:fs");
+			writeFileSync(${JSON.stringify(home)} + "/web-search.json", JSON.stringify({ searxngBaseUrl: ${JSON.stringify(searxngBaseUrl)} }));
+			const calls = [];
+			globalThis.fetch = async (url) => {
+				calls.push(String(url));
+				return new Response(JSON.stringify({ results: [{ title: "Local", url: "https://example.com/local", content: "local" }] }), { status: 200 });
+			};
+			const { searchWithSearXNG } = await import(${JSON.stringify(searxngModuleUrl)});
+			const result = await searchWithSearXNG("local");
+			console.log(JSON.stringify({ calls, result }));
+		`, {
+			HOME: home,
+			USERPROFILE: home,
+			PI_CODING_AGENT_DIR: home,
+		});
+		assert.equal(child.status, 0, child.stderr);
+		const output = JSON.parse(child.stdout.trim());
+		assert.deepEqual(output.calls, [`${searxngBaseUrl}/search?q=local&format=json`]);
+		assert.deepEqual(output.result.results, [{ title: "Local", url: "https://example.com/local", snippet: "local" }]);
+	}
+});
+
+test("SearXNG keeps the loopback exemption on the configured origin and blocks a pivot to another loopback service", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-access-searxng-pivot-"));
+	const child = runChild(`
+		const { writeFileSync } = await import("node:fs");
+		writeFileSync(${JSON.stringify(home)} + "/web-search.json", JSON.stringify({ searxngBaseUrl: "http://127.0.0.1:8888" }));
+		const calls = [];
+		globalThis.fetch = async (url) => {
+			calls.push(String(url));
+			if (calls.length === 1) return new Response("", { status: 302, headers: { location: "http://127.0.0.1:8888/search/v2?q=pivot&format=json" } });
+			if (calls.length === 2) return new Response("", { status: 302, headers: { location: "http://127.0.0.2:9999/private" } });
+			return new Response(JSON.stringify({ results: [] }), { status: 200 });
+		};
+		const { searchWithSearXNG } = await import(${JSON.stringify(searxngModuleUrl)});
+		let pivotError = null;
+		try { await searchWithSearXNG("pivot"); }
+		catch (err) { pivotError = err.message; }
+		console.log(JSON.stringify({ calls, pivotError }));
+	`, {
+		HOME: home,
+		USERPROFILE: home,
+		PI_CODING_AGENT_DIR: home,
+	});
+	assert.equal(child.status, 0, child.stderr);
+	const output = JSON.parse(child.stdout.trim());
+	assert.deepEqual(output.calls, [
+		"http://127.0.0.1:8888/search?q=pivot&format=json",
+		"http://127.0.0.1:8888/search/v2?q=pivot&format=json",
+	]);
+	assert.match(output.pivotError, /Blocked internal address/);
+});
+
+test("SearXNG keeps the loopback exemption off another port on the same loopback host", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-access-searxng-port-"));
+	const child = runChild(`
+		const { writeFileSync } = await import("node:fs");
+		writeFileSync(${JSON.stringify(home)} + "/web-search.json", JSON.stringify({ searxngBaseUrl: "http://127.0.0.1:8888" }));
+		const calls = [];
+		globalThis.fetch = async (url) => {
+			calls.push(String(url));
+			if (calls.length === 1) return new Response("", { status: 302, headers: { location: "http://127.0.0.1:9999/search?q=port&format=json" } });
+			return new Response(JSON.stringify({ results: [] }), { status: 200 });
+		};
+		const { searchWithSearXNG } = await import(${JSON.stringify(searxngModuleUrl)});
+		let portError = null;
+		try { await searchWithSearXNG("port"); }
+		catch (err) { portError = err.message; }
+		console.log(JSON.stringify({ calls, portError }));
+	`, {
+		HOME: home,
+		USERPROFILE: home,
+		PI_CODING_AGENT_DIR: home,
+	});
+	assert.equal(child.status, 0, child.stderr);
+	const output = JSON.parse(child.stdout.trim());
+	assert.deepEqual(output.calls, ["http://127.0.0.1:8888/search?q=port&format=json"]);
+	assert.match(output.portError, /Blocked internal address/);
 });
 
 test("SearXNG search merges configured custom headers", async () => {
@@ -996,6 +1120,10 @@ test("OpenAI search requires web_search and maps domain filters", async () => {
 		"https://openai.com/docs",
 		"https://openai.com/blog",
 	]);
+	// Citation snippets are cut from OpenAI's own answer text; raw source-list entries have none.
+	assert.equal(output.results[0].snippet, "Answer from the web");
+	assert.equal(output.results[0].snippetSource, "generated");
+	assert.equal(output.results[1].snippetSource, undefined);
 });
 
 test("OpenAI search uses configured Responses endpoint", async () => {
@@ -1323,7 +1451,7 @@ test("OpenAI search falls back to API key when model registry cannot enumerate",
 	assert.equal(child.status, 0, child.stderr);
 	const output = JSON.parse(child.stdout.trim());
 	assert.equal(output.answer, "fallback answer");
-	assert.equal(output.model, "gpt-5.6-terra");
+	assert.equal(output.model, "gpt-6-luna");
 });
 
 test("OpenAI search uses configured model with selected registry auth", async () => {
@@ -1373,6 +1501,43 @@ test("OpenAI search uses configured model with selected registry auth", async ()
 	assert.equal(output.answer, "registry answer");
 	assert.equal(output.requestModel, "gateway-search-model");
 	assert.equal(output.selectedModel, "gpt-5.10");
+});
+
+test("OpenAI search picks the newest Luna model from the registry", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-access-openai-luna-"));
+	const child = runChild(`
+		let capturedBody = null;
+		globalThis.fetch = async (url, init) => {
+			capturedBody = JSON.parse(init.body);
+			return new Response(JSON.stringify({
+				output: [
+					{ type: "web_search_call", action: { sources: [] } },
+					{ type: "message", content: [{ type: "output_text", text: "luna answer" }] },
+				],
+			}), { status: 200, headers: { "content-type": "application/json" } });
+		};
+
+		// The ChatGPT subscription model list as Pi 1.0.4 registers it.
+		const models = ["gpt-5.5", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol"]
+			.map((id) => ({ provider: "openai-codex", id }));
+		const ctx = {
+			modelRegistry: {
+				getAll: () => models,
+				getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "codex-key", headers: {} }),
+			},
+		};
+
+		const { searchWithOpenAI } = await import(${JSON.stringify(openaiModuleUrl)});
+		await searchWithOpenAI("luna docs", { numResults: 1 }, ctx);
+		console.log(JSON.stringify({ requestModel: capturedBody.model }));
+	`, {
+		HOME: home,
+		USERPROFILE: home,
+		PI_CODING_AGENT_DIR: home,
+	});
+
+	assert.equal(child.status, 0, child.stderr);
+	assert.equal(JSON.parse(child.stdout.trim()).requestModel, "gpt-6-luna");
 });
 
 test("OpenAI search honors configured provider priority", async () => {

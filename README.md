@@ -4,7 +4,7 @@
 
 # Pi Web Access
 
-**Web search, content extraction, and video understanding for Pi agent. OpenAI/Codex search, zero-config Exa search, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, AnySearch, XCrawl, Valyu, xAI/Grok, Mistral, Bright Data SERP, SerpBase, SerpApi, Serper, explicit-only Serply, self-hosted SearXNG, self-hosted Crawl4AI extraction, keyless DuckDuckGo, optional browser-cookie Gemini Web, Kimi Code Plan search, or bring your own API keys.**
+**Web search, content extraction, and video understanding for Pi agent. OpenAI/Codex search, zero-config Exa search, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, AnySearch, XCrawl, Valyu, xAI/Grok, Mistral, Bright Data SERP, SerpBase, SerpApi, Linkup, Serper, explicit-only Serply, SearchApi, Outcrawl, Sofya, cloro, Autom, SpecStream, self-hosted SearXNG, degoog metasearch, self-hosted Crawl4AI extraction, keyless DuckDuckGo, keyless Keenable, optional browser-cookie Gemini Web, Kimi Code Plan search, or bring your own API keys.**
 
 [![npm version](https://img.shields.io/npm/v/pi-web-access?style=for-the-badge)](https://www.npmjs.com/package/pi-web-access)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -12,15 +12,29 @@
 
 <https://github.com/user-attachments/assets/cac6a17a-1eeb-4dde-9818-cdf85d8ea98f>
 
+## What's new in 0.46
+
+https://github.com/user-attachments/assets/e20f3e53-182f-42f5-9551-c29a432f2877
+
+Page fetches can now connect the way a browser does, so more sites that block bots send the page: in a test of 68 pages, the extension read 31 instead of 18. Pages that still refuse can be read through Exa or Tabstack. Three new search providers run only when you pick them: Cloudflare, Google through SearchApi, and Tabstack, which returns one cited answer instead of a list of links. Over MCP, the tools take about half as many tokens on every request, and reading a PDF now gives you its text. See the [changelog](CHANGELOG.md#0460---2026-10-28) for everything in this release.
+
+## What's new in 0.45
+
+https://github.com/user-attachments/assets/d9296f9b-9769-4ca0-8c27-ef1a766afcdc
+
+The agent can now pull specific values off a page, like a price or a rate limit, instead of reading the whole thing. Numbers and text come back with the line they were found on, and anything the model isn't sure of is marked as a guess or as not on the page. Code mode scripts get those values as typed data, so one script can search and compare numbers across the top results. Search can also move on to the next provider when one comes back empty or off-topic, and the web tools take about 60% fewer tokens on every request. See the [changelog](CHANGELOG.md#0450---2026-10-25) for everything in this release.
+
 ## Why Pi Web Access
 
-**Zero Config** — Works out of the box with Exa MCP (no API key needed). If you're signed into Pi with a Codex subscription, OpenAI web search can reuse that auth. An active Kimi Code Plan signed in through `/login kimi-coding` enables explicit Kimi search without a separate Open Platform key. Add API keys or endpoints for OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, Valyu, SerpBase, SerpApi, Serper, explicit-only Serply, Exa, Perplexity, Gemini API, or Mistral for more control; configure a self-hosted SearXNG endpoint for private search; or opt into browser-cookie access for Gemini Web.
+**Zero Config** — Works out of the box with Exa MCP (no API key needed). If you're signed into Pi with a Codex subscription, OpenAI web search can reuse that auth. An active Kimi Code Plan signed in through `/login kimi-coding` enables explicit Kimi search without a separate Open Platform key. Add API keys or endpoints for OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, Valyu, SerpBase, SerpApi, Serper, explicit-only Serply, SearchApi, Outcrawl, Sofya, cloro, Autom, SpecStream, Exa, Perplexity, Gemini API, or Mistral for more control; configure a self-hosted SearXNG endpoint or a degoog metasearch instance (public `https://degoog.org` by default) for private search; or add a Tabstack key for cited research answers; or opt into browser-cookie access for Gemini Web.
 
 **Video Understanding** — Point it at a YouTube video or local screen recording and ask questions about what's on screen. Full transcripts, visual descriptions, and frame extraction at exact timestamps.
 
 **Smart Fallbacks** — Every capability has a fallback chain. Search tries configured SearXNG first for local/private search. When the active Pi model uses a ChatGPT subscription (`openai-codex`, or `openai` with Sign in with ChatGPT), it then tries subscription-backed OpenAI search. Otherwise it tries Exa before OpenAI, then Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, Perplexity, Gemini API, and Gemini Web when browser cookies are enabled. YouTube tries Gemini Web when enabled, then API, then Perplexity. Blocked pages try configured self-hosted Firecrawl or Crawl4AI first. Third-party hosted page fetchers require explicit `fetchRouting.allowRemoteHostedProviders` opt-in for remote HTTP(S) targets.
 
 **GitHub Cloning** — GitHub URLs are cloned locally instead of scraped. The agent gets real file contents and a local path to explore, not rendered HTML.
+
+**Other Agents** — The search and fetch tools also run as a local MCP server for Claude Code, Codex, Cursor, and other MCP clients. See [Use from other agents (MCP)](#use-from-other-agents-mcp).
 
 ## Install
 
@@ -77,6 +91,32 @@ Codex auth with the official `https://chatgpt.com/backend-api` base uses `/backe
 
 If no candidate has usable Pi credentials and a valid provider base URL, this mode fails closed and marks OpenAI unavailable; it does not fall back to the official endpoint or a standalone API key. API-key-only configurations can use `openaiResponsesUrl` instead. This switch applies to independent OpenAI provider selection; `searchRouting.useCurrentModel` retains its existing official-endpoint selection and eligibility rules.
 
+### Azure OpenAI web search (Bing grounding)
+
+Azure OpenAI supports the Responses API's built-in `web_search` tool, backed by Grounding with Bing Search / Bing Custom Search, through the `openai` search provider.
+
+For a standalone Azure API key, add this to `web-search.json`:
+
+```json
+{
+  "provider": "openai",
+  "openaiSearchProviders": [],
+  "openaiResponsesUrl": "https://YOUR-RESOURCE.openai.azure.com/openai/v1/responses",
+  "openaiApiKey": "$AZURE_OPENAI_API_KEY",
+  "openaiSearchModel": "YOUR-DEPLOYMENT-NAME"
+}
+```
+
+The empty provider list prevents an existing Pi OpenAI/Codex login from taking precedence over the Azure key. Without it, a Codex login keeps searching through ChatGPT Codex and never sends its token to Azure, while a Pi OpenAI login's credential is sent to the Azure endpoint in place of the Azure key. Set `AZURE_OPENAI_API_KEY` in the environment; do not put the key itself in shared configuration. An explicitly configured Microsoft Entra JWT access token is also supported and is sent as Bearer auth; raw Azure API keys use the `api-key` header. The extension does not fetch or renew Entra tokens.
+
+To reuse a configured Pi Azure provider instead, set `openaiSearchProviders` to its provider ID and `openaiUseProviderBaseUrl: true`, with no `openaiResponsesUrl`. Its base URL must already end in `/openai/v1` or `/openai/v1/responses`. Use `openaiSearchModel` to specify the Azure deployment name if it differs from the selected model ID. Do not enable `openaiUseAlphaSearch`: Azure does not implement the Codex standalone search protocol.
+
+Current-model routing (`searchRouting.useCurrentModel: true`, with no top-level `provider`) also accepts `openai-responses` and `azure-openai-responses` models on HTTPS Azure resource endpoints under `*.openai.azure.com`, `*.cognitiveservices.azure.com`, or `*.services.ai.azure.com`. Their configured base URL must use `/openai/v1`; the model ID is sent as the deployment name, including names without a `gpt-` prefix. Other gateway and sovereign-cloud endpoints can use the explicit Responses endpoint configuration, but are not automatically recognized as Azure for authentication or current-model eligibility.
+
+**Costs and privacy:** Bing grounding incurs search charges in addition to model usage. Microsoft states that grounding data flows outside your compliance and geographic boundary and is not covered by the Microsoft Data Protection Addendum. Confirm that this is appropriate before sending sensitive queries. See [Microsoft's Azure web search documentation](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/web-search).
+
+After reloading Pi, verify with a public, non-sensitive query. A successful hosted search must contain a `web_search_call` and return an answer or sources; an ordinary model-only response is rejected.
+
 ### Optional OpenAI standalone search
 
 Set `openaiUseAlphaSearch: true` to use the independent Codex `alpha/search` protocol instead of Responses-hosted `web_search`. The default is `false`; omitting the flag keeps existing Responses behavior. Non-boolean values are rejected.
@@ -107,7 +147,7 @@ To route automatic searches through the active Pi model, configure an ordered ro
 }
 ```
 
-With `useCurrentModel: true`, the automatic `openai` step uses Hosted `web_search` (or standalone search when `openaiUseAlphaSearch` is enabled) when the active model is a GPT model backed by an official OpenAI Responses endpoint: `openai`/`openai-responses` on HTTPS `api.openai.com`, or `openai-codex`/`openai-codex-responses` on the official ChatGPT Codex endpoint. Third-party gateways, Azure, and other models continue to the next route entry. A tool-level `provider` or top-level `provider` remains an explicit override; `provider: "openai"` keeps the existing independent OpenAI/Codex search-model behavior.
+With `useCurrentModel: true`, the automatic `openai` step uses Hosted `web_search` (or standalone search when `openaiUseAlphaSearch` is enabled) when the active model is a GPT model backed by an official OpenAI Responses endpoint: `openai`/`openai-responses` on HTTPS `api.openai.com`, or `openai-codex`/`openai-codex-responses` on the official ChatGPT Codex endpoint. Azure v1 Responses models are also eligible as described above, using their model ID as the deployment name. Third-party gateways and other models continue to the next route entry. A tool-level `provider` or top-level `provider` remains an explicit override; `provider: "openai"` keeps the existing independent OpenAI/Codex search-model behavior.
 
 For sandboxed or corporate networks where only the proxy can resolve hostnames, set `ssrf.trustEnvProxy` to `true` to skip local DNS preflight for proxied hostnames:
 
@@ -163,7 +203,7 @@ fetch_content({ url: "/path/to/recording.mp4", prompt: "What error appears on sc
 
 ### web_search
 
-Search the web via OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data SERP, SerpBase, SerpApi, Serper, Serply, You.com, self-hosted SearXNG, keyless DuckDuckGo, Exa, Perplexity AI, Gemini, or Kimi. The default `none` workflow makes no summary-generation model call and opens no curator/browser: it returns bounded raw results, identifies the provider used for each query, and stores the full results for retrieval by responseId. The selected search provider may itself be model-backed.
+Search the web via OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data SERP, SerpBase, SerpApi, Serper, Serply, SearchApi, Outcrawl, Sofya, cloro, Autom, SpecStream, You.com, keyless Keenable, Ceramic, DeepSeek, Linkup, a 9router gateway, the Cloudflare Web Search API, explicit-only Tabstack Research, self-hosted SearXNG, explicit-only degoog, keyless DuckDuckGo, Exa, Perplexity AI, Gemini, or Kimi. The default `none` workflow makes no summary-generation model call and opens no curator/browser: it returns bounded raw results, identifies the provider used for each query, and stores the full results for retrieval by responseId. The selected search provider may itself be model-backed.
 
 ```typescript
 web_search({ query: "rust async programming" })
@@ -171,9 +211,11 @@ web_search({ queries: ["query 1", "query 2"] })
 web_search({ query: "latest news", numResults: 10, recencyFilter: "week" })
 web_search({ query: "...", domainFilter: ["github.com"] })
 web_search({ query: "...", provider: "openai" })
+web_search({ query: "...", provider: "openai", model: "gpt-6-luna" })
 web_search({ query: "...", provider: "kimi" })
 web_search({ query: "...", provider: "mistral" })
 web_search({ query: "...", provider: "all" })
+web_search({ query: "...", provider: "brave,exa" })
 web_search({ query: "...", includeContent: true })
 web_search({ queries: ["query 1", "query 2"], workflow: "none" })
 web_search({ queries: ["query 1", "query 2"], workflow: "summary-review" })
@@ -186,9 +228,12 @@ web_search({ queries: ["query 1", "query 2"], workflow: "auto-summary" })
 | `numResults` | Results per query (default: 5, max: 20) |
 | `recencyFilter` | `day`, `week`, `month`, or `year` |
 | `domainFilter` | Limit to domains (prefix with `-` to exclude) |
-| `provider` | Configured provider when omitted or set to `auto`; `all` searches every eligible provider except Parallel MCP, DuckDuckGo, Kimi, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data, SerpBase, SerpApi, Serper, Serply, You.com, Baizhi, and Z.ai simultaneously; otherwise `openai`, `brave`, `parallel`, `parallel-mcp`, `tinyfish`, `search1api`, `searchinfinity`, `querit`, `tavily`, `you`, `firecrawl`, `jina`, `serpdive`, `kagi`, `bocha`, `ollama`, `anysearch`, `xcrawl`, `valyu`, `xai`, `mistral`, `brightdata`, `serpbase`, `serpapi`, `serper`, `serply`, `baizhi`, `zai`, `searxng`, `duckduckgo`, `exa`, `perplexity`, `gemini`, or `kimi` (auto-selects when no provider or routing is configured; Parallel MCP, DuckDuckGo, Kimi, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data, SerpBase, SerpApi, Serper, Serply, You.com, Baizhi, and Z.ai are explicit-only) |
+| `category` | Exa only: restrict results to a category such as `publication` (research papers), `news`, or `company`; other providers ignore it. Each Exa source lists its published date and authors when Exa returns them, and `publication` results also list the citation count and DOI. Without an API key, if Exa's filtered search is unavailable, the category is added to the query instead |
+| `provider` | Omit it or pass `"auto"` to use the configured provider (auto-selects when no provider or routing is configured). `"all"` searches every eligible provider at once; [All providers](#all-providers) lists the explicit-only providers it skips. Otherwise one name (`openai`, `brave`, `parallel`, `parallel-mcp`, `tinyfish`, `search1api`, `searchinfinity`, `querit`, `tavily`, `you`, `firecrawl`, `jina`, `serpdive`, `kagi`, `bocha`, `ollama`, `anysearch`, `xcrawl`, `valyu`, `xai`, `mistral`, `brightdata`, `serpbase`, `serpapi`, `serper`, `serply`, `searchapi`, `outcrawl`, `sofya`, `cloro`, `autom`, `specstream`, `baizhi`, `zai`, `keenable`, `ceramic`, `deepseek`, `linkup`, `ninerouter`, `cloudflare`, `tabstack`, `searxng`, `degoog`, `duckduckgo`, `exa`, `perplexity`, `gemini`, or `kimi`), or several comma-separated names such as `"brave,exa"` to search them at once. An unknown name fails before any request with an error that lists the valid names |
 | `includeContent` | Fetch full page content from sources in background |
+| `model` | Model ID for this call only, used instead of `openaiSearchModel`, `xaiSearchModel`, `mistralSearchModel`, or Gemini's `searchModel`. Requires `provider` set to exactly one of `openai`, `xai`, `mistral`, or `gemini`. A failure is reported as an error rather than retried with another model or provider, and Gemini uses only its API, never browser cookies. Listed only when `webSearch.allowedProviders` allows one of those providers; not available with `workflow: "summary-review"` or over MCP |
 | `workflow` | `none` (skip curator; fresh-install default), `summary-review` (open curator and auto-generate a summary draft), or `auto-summary` (generate a summary without opening the curator) |
+| `proxy` | http(s) or socks proxy URL for every request in this call; `""` forces a direct connection. Rejected when `lockProxy` is set, unless it matches the configured proxy. `HTTP(S)_PROXY` env vars are ignored. See [Proxy](#proxy-proxy) |
 
 Batch searches run up to three queries concurrently. Provider routing and fallback within each query remain sequential. Brave requests share an in-process queue and honor the rate-limit buckets returned in `X-RateLimit-*`; exhausted short windows delay the next request with a small safety margin, while long quota resets fail fast and keep the advertised cooldown active for later queued calls. HTTP 429 responses are retried once after the advertised `Retry-After` or rate-limit reset. Brave's 30-second search deadline covers queueing, cooldown waits, and both request attempts. The queue coordinates one Pi process; separate Pi processes still rely on Brave's 429 response.
 
@@ -206,6 +251,7 @@ fetch_content({ url: "/path/to/recording.mp4", prompt: "What error appears on sc
 fetch_content({ url: "https://youtube.com/watch?v=abc", timestamp: "23:41-25:00", frames: 4 })
 fetch_content({ url: "https://example.com/api", mode: "raw" })
 fetch_content({ url: "https://example.com/guide", mode: "answer", prompt: "What are the installation steps?" })
+fetch_content({ url: "https://example.com/pricing", mode: "extract", fields: { pro_monthly: "number: Pro plan monthly price", trial_days: "integer" } })
 fetch_content({ url: "https://example.com/account", auth: "work", mode: "raw" })
 fetch_content({ url: "https://example.com/diagram.png" })
 ```
@@ -214,13 +260,20 @@ fetch_content({ url: "https://example.com/diagram.png" })
 | ----------- | ------------- |
 | `url` / `urls` | Single URL/path or multiple URLs |
 | `prompt` | Question for video analysis, or the page-local question required by `mode: "answer"` |
-| `mode` | `readable` (default), `raw` for exact textual HTTP bodies, or `answer` for a grounded answer from fetched content |
+| `mode` | `readable` (default), `raw` for exact textual HTTP bodies, `answer` for a grounded answer from fetched content, or `extract` for typed values (off unless `fetch.allowedModes` lists it) |
+| `fields` | For `mode: "extract"`: field name → `"type"` or `"type: what to find"`, such as `"date: release date of the latest stable version"` |
 | `answerModel` | Optional `provider/model-id` override for answer mode; defaults to the configured `fetch.answerProvider` + `fetch.answerModel` pair, or the current enabled Pi model when no pair is configured |
-| `timestamp` | Extract frame(s) — single (`"23:41"`), range (`"23:41-25:00"`), or seconds (`"85"`) |
-| `frames` | Number of frames to extract (max 12) |
+| `timestamp` | Extract frame(s): single (`"1:23:45"`, `"23:41"`, or seconds `"85"`) or range (`"23:41-25:00"`, 6 evenly spaced frames by default; useful when you only know roughly where something happens). Needs `ffmpeg`, plus `yt-dlp` for YouTube |
+| `frames` | Number of frames (1-12): spread across a `timestamp` range, 5 seconds apart from a single `timestamp`, or across the whole video when used alone |
+| `model` | Gemini model for video and YouTube analysis (default: config, else `gemini-3.6-flash`) |
 | `forceClone` | Clone GitHub repos that exceed the 350MB size threshold |
+| `auth` | `authFetch` profile name for local browser-cookie fetching, or `true` when exactly one profile exists. See [Blocked pages](#blocked-pages) |
+| `proxy` | Proxy URL for this fetch; `""` forces a direct connection. Rejected when `lockProxy` is set, unless it matches the configured proxy. See [Proxy](#proxy-proxy) |
+| `redirects` | `"same-origin"` refuses redirects that change the scheme, hostname, or port. See `fetchContent.redirects` |
 
-For a standing answer-mode model, set both `fetch.answerProvider` and `fetch.answerModel` in `web-search.json`; a per-call `answerModel` takes precedence. Configured answer defaults are opt-in and can send fetched page text to a different provider/model, which may change privacy and cost behavior.
+For a standing answer-mode model, set both `fetch.answerProvider` and `fetch.answerModel` in `web-search.json`; a per-call `answerModel` takes precedence. Configured answer defaults are opt-in and can send fetched page text, images and video frames to a different provider/model, which may change privacy and cost behavior.
+
+Extract mode reads named values off each page with Cloudflare's Clairic model, on your own Cloudflare account: add `"extract"` to `fetch.allowedModes` and set up Pi's `cloudflare-workers-ai` provider (`CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`, or Pi's `/login`). Each field comes back as a typed value, an uncertain guess, or not on the page. The page text is sent to Cloudflare, including a private GitHub repository your `gh` login can read; `auth` is refused. Pi only. [docs/field-extract.md](docs/field-extract.md) covers AI Gateway routing, field types, limits, and measurements.
 
 Thanks to [@linuxtextadventurer](https://github.com/linuxtextadventurer) for PR #328.
 
@@ -237,11 +290,14 @@ get_search_content({ responseId: "abc123", urlIndex: 0, findText: "installation"
 get_search_content({ responseId: "abc123", urlIndex: 0, findText: ["timeout", "retry"], findMode: "fuzzy" })
 ```
 
+Pass the `responseId` from a `web_search`, `fetch_content`, or `source_check` result.
+Choose the stored item with `query` or `queryIndex` for a search, or `url` or `urlIndex` for a fetched page. `offset` (default 0) and `limit` page through it.
+
 `findMode` supports `exact`, `case-insensitive` (default), and `fuzzy`. Finder output is capped at 20,000 characters with match counts and nearby context. Fitting responses retain their existing format and document order. Overflow responses identify queries as `Q1`, `Q2`, and so on, list each full query once, and reserve a representative excerpt for each query whose discovered match span fits the output budget. Queries with oversized spans are listed as having no representative excerpt. `findText` cannot be combined with `offset` or `limit`. The default `limit` and maximum permitted `limit` use `maxInlineContentChars`; search-page continuation guidance shares that overall output budget and may reduce the returned stored-content characters.
 
 ### source_check
 
-Gather evidence for a claim and return a machine-readable artifact with exact passage citations for manual semantic review. Search results are deduplicated and capped at 20 sources; `fetchContent` fetches at most 5 pages, while stored and retrieved content remains subject to the configured `maxInlineContentChars` `offset`/`limit` bounds.
+Gather evidence for a claim and return a machine-readable artifact with exact passage citations for manual semantic review. Search results are deduplicated and capped at 20 sources; `fetchContent` fetches at most 5 pages, while stored and retrieved content remains subject to the configured `maxInlineContentChars` `offset`/`limit` bounds. The result lists each source's passages under it, so the agent can weigh the claim without another call: up to 4,000 characters in all, each passage cut at 400, with the rest in the artifact. Passages from fetched pages are the sentences that share the most words with the claim, then with the search snippet; short acronyms and numbers such as `API`, `TLS` or `429` count when the page writes them the same way.
 
 ```typescript
 source_check({ claim: "The API supports streaming responses" })
@@ -253,7 +309,59 @@ source_check({
 })
 ```
 
-The artifact preserves the `supported`, `contradicted`, `unclear`, or `missing-evidence` claim status schema, source quality hints, SHA-256 content hashes, and passage IDs with exact source offsets. It does not infer semantic support or contradiction automatically: retrieved passages produce `unclear` for manual review, while no passages produce `missing-evidence`. Search and fetch errors remain in the artifact instead of being silently discarded. Artifacts are stored with the session and retrieved through `get_search_content` using the returned `responseId`; paged artifact responses are JSON slices, so request the next `offset` when needed.
+| Parameter | Description |
+| ----------- | ------------- |
+| `claim` | The assertion to check |
+| `queries` | Search queries to run (default: the claim; up to 8) |
+| `numResults` | Results per query (default: 5, max: 20) |
+| `fetchContent` | Fetch the top 5 pages so passages come with exact offsets in the page |
+| `recencyFilter` | `day`, `week`, `month`, or `year` |
+| `domainFilter` | Limit to domains (prefix with `-` to exclude) |
+| `provider` | Same as `web_search`: `"auto"`, `"all"`, one name, or a list such as `"brave,exa"` |
+| `proxy` | http(s) or socks proxy URL for every request in this call; `""` forces a direct connection. Rejected when `lockProxy` is set, unless it matches the configured proxy. See [Proxy](#proxy-proxy) |
+
+The artifact preserves the `supported`, `contradicted`, `unclear`, or `missing-evidence` claim status schema, source quality hints, SHA-256 content hashes, and passage IDs with exact source offsets. It does not judge the claim: retrieved passages produce `unclear` for manual review, while no passages produce `missing-evidence`. Search and fetch errors remain in the artifact instead of being silently discarded. Artifacts are stored with the session and retrieved through `get_search_content` using the returned `responseId`; paged artifact responses are JSON slices, so request the next `offset` when needed.
+
+### In codemode scripts
+
+Scripts run by Pi's `codemode` tool (Pi 1.0 or later) get data instead of the text the model sees. `await tools.web_search(...)` resolves to `{ responseId, fetchId, queries }`, where each query has its `answer`, `error`, provider, and `results` (`title`, `url`, `snippet`). `await tools.fetch_content(...)` resolves to `{ responseId, urls }`, where each URL has its full `content`, not limited by `maxInlineContentChars`, and its `error`. Failed searches and fetches still resolve to this data, with the reason in `error`; invalid arguments reject. A script's `web_search` uses `workflow: "none"` unless it passes a workflow, so a configured curator does not open, and with `includeContent` it waits for the pages, readable through `fetchId`, instead of fetching them in the background. A script that passes `workflow: "summary-review"` gets the curator and the background fetch, as the model does.
+
+With extract mode allowed, each fetched URL also has an `extraction`: `fields` maps each name to `{ status, value, confidence }` (`status` is `"extracted"`, `"uncertain"` with a `guess` instead of a `value`, or `"null"` for not on the page), or `error` says why extraction failed for that page. To search and read a value off the top results:
+
+```js
+const search = await tools.web_search({ query: "Acme Pro plan price" });
+const urls = search.queries[0].results.slice(0, 3).map((result) => result.url);
+const page = await tools.fetch_content({ urls, mode: "extract", fields: { pro_monthly: "number: Pro plan price per month" } });
+return page.urls.map(({ url, extraction }) => ({ url, price: extraction?.fields?.pro_monthly }));
+```
+
+## Use from other agents (MCP)
+
+Other agents, such as Claude Code, Codex, Cursor, or Executor, can use `web_search`, `fetch_content`, `get_search_content`, and `source_check` through a local stdio MCP server. It needs Node.js 22.19 or later and no Pi install:
+
+```bash
+npx -y pi-web-access
+```
+
+Add it to an `mcpServers` config (Claude Code, Cursor, and similar clients; Codex takes the same command, args, and env in its `config.toml`):
+
+```json
+{
+  "mcpServers": {
+    "pi-web-access": {
+      "command": "npx",
+      "args": ["-y", "pi-web-access"],
+      "env": { "BRAVE_API_KEY": "BSA_..." }
+    }
+  }
+}
+```
+
+- The server reads the same `web-search.json` and provider environment variables as the extension. It lists only the tools enabled there, under their default names; `toolNames` renames do not apply.
+- Pi-only features are not available: the curator and summaries (a configured `workflow` is ignored), Kimi search, OpenAI search through ChatGPT sign-in or the current Pi model, `fetch_content` answer and extract modes and video prompts or frames, and direct image fetches. Explicit requests for them return a tool error rather than a fallback, and automatic provider selection only uses providers that work outside Pi.
+- `includeContent` waits for the page fetch before `web_search` returns.
+- The server keeps the 50 most recent results in memory for `get_search_content`; they are gone when it exits. Restart the server to pick up config changes.
+- Install with npm's default settings or `--legacy-peer-deps`. `--omit=peer` leaves out `zod`, which the MCP SDK needs.
 
 ## Capabilities
 
@@ -293,19 +401,28 @@ fetch_content({ url: "...", frames: 6 })                                // sampl
 
 Requires `ffmpeg` (and `yt-dlp` for YouTube). Timestamps accept `H:MM:SS`, `MM:SS`, or bare seconds.
 
+To have another model look at the frames instead of your agent's model, add `mode: "answer"` with a `prompt`. The frames (or a fetched image) go to the answer model as images and only its text answer comes back, so this works without any Gemini credential, as long as the answer model accepts image input:
+
+```typescript
+fetch_content({ url: "...", frames: 8, mode: "answer", prompt: "What is shown on screen?", answerModel: "openrouter/xiaomi/mimo-v2.6-flash" })
+```
+
 ### PDFs
 
-With `mode: "answer"`, the answer model receives the extracted PDF Markdown rather than the saved-file notice. The Markdown file is still saved, and the original extracted content remains available through `get_search_content`; ordinary readable-mode PDF fetches continue to return the file path.
+With `mode: "answer"`, the answer model receives the extracted PDF Markdown. In readable mode the result is the Markdown itself, preceded by the path of the saved file, and long PDFs are cut at `maxInlineContentChars` like any page. In readable, answer and extract modes the Markdown is stored, so `get_search_content` can page through it.
 
-PDF URLs are converted to Markdown and saved under the temporary `pi-web-pdf` directory by default so the agent can `read` specific sections without loading the full document into context. Three engines are available, selected with `pdf.provider` (`"auto"` is the default):
+PDF URLs are converted to Markdown and also saved under the temporary `pi-web-pdf` directory by default, so an agent that can read local files can `read` specific sections. Four engines are available, selected with `pdf.provider` (`"auto"` is the default):
 
 | Provider | Engine | Trade-offs |
 | --- | --- | --- |
+| `endpoint` | Self-hosted parser endpoint (POST the PDF, get Markdown) | Layout-aware conversion (marker and similar pipelines) on hardware you run; no key, no per-page cost; requires `pdf.endpointUrl` |
 | `datalab` | Datalab hosted conversion (Marker) | Deterministic layout-aware output — tables, multi-column reading order, headings, math; `accurate` mode handles scanned pages; may return a `parse_quality_score`; requires a Datalab key, billed per page with a free monthly credit |
 | `gemini` | Gemini API (vision LLM) | Best on scanned/complex pages; LLM transcription can occasionally drift or truncate; requires a Gemini key |
 | `unpdf` | Local pdf.js text extraction | Free, offline, no key; flattened text only — no layout, no tables, no OCR |
 
-`auto` order: Datalab (when a key is configured) → Gemini (when a key is configured) → local `unpdf`. Datalab runs first for layout-aware conversion. If its request fails — including after free-tier credit is exhausted — the chain continues to Gemini, then `unpdf`, automatically. Setting `pdf.provider` to `gemini`, `datalab`, or `unpdf` pins that engine and skips the other remote tiers (an explicit engine still falls back to `unpdf` when it errors, except for credential/config errors and caller cancellation). No Datalab key means the `datalab` tier is simply skipped — behavior is unchanged for existing users.
+`auto` order: self-hosted endpoint (when `pdf.endpointUrl` is configured) → Datalab (when a key is configured) → Gemini (when a key is configured) → local `unpdf`. The endpoint runs first because it is local and deterministic. If its request fails — parser down, engine error, timeout — the chain continues to Datalab, then Gemini, then `unpdf`, automatically. Setting `pdf.provider` to `endpoint`, `gemini`, `datalab`, or `unpdf` pins that engine and skips the other remote tiers (an explicit engine still falls back to `unpdf` when it errors, except for credential/config errors and caller cancellation). No Datalab key means the `datalab` tier is simply skipped — behavior is unchanged for existing users.
+
+**Self-hosted parser endpoint.** `pdf.endpointUrl` receives a `multipart/form-data` POST with a `file` field (plus `engine` when `pdf.endpointEngine` is set, and `max_pages`) and answers `{ "markdown": "…" }`, or `{ "job_id": "…" }`, which is polled at `jobs/{id}` next to the configured URL until `done`, `error`, or `pdf.endpointTimeoutMs` (default 120s, capped at 300s). The URL passes the same SSRF guard as every other fetch, so a LAN host needs its range in `ssrf.allowRanges` (loopback is allowed); `PDF_ENDPOINT_URL` overrides `pdf.endpointUrl`. For a LAN parser: `{ "ssrf": { "allowRanges": ["192.168.50.0/24"] }, "pdf": { "endpointUrl": "http://192.168.50.48:8070/parse", "endpointEngine": "marker" } }`.
 
 **Why Datalab.** The hosted converter uses a dedicated extraction engine (Marker) intended to retain document structure such as tables, multi-column reading order, headings, links, and math, where local `unpdf` extraction only yields flattened text. It is deterministic rather than LLM-based. Completed responses may include a `parse_quality_score` (0–5) for optional quality gating. Pricing is per processed page: **fast / balanced** $4 / 1,000 pages; **accurate** $10 / 1,000 pages. The free tier gives a **$10 monthly credit** (personal email; $20 with a work email) at **25 requests/minute** — roughly **2,500 pages/month free in `fast` mode** or 1,000 in `accurate` mode. Processing defaults to the **US region**. EU data residency uses **1.25× usage**; opt in with `DATALAB_PROCESSING_LOCATION=eu`.
 
@@ -317,7 +434,7 @@ Configure Datalab via the web-search config:
   "pdf": {
     "maxSizeMB": 20,
     "maxPages": 100,
-    "provider": "auto",      // "auto" | "gemini" | "datalab" | "unpdf"
+    "provider": "auto",      // "auto" | "endpoint" | "gemini" | "datalab" | "unpdf"
     "datalabMode": "balanced", // "fast" | "balanced" | "accurate"
     "datalabTimeoutMs": 120000
   }
@@ -342,16 +459,19 @@ An empty string (`""`) forces a direct connection even when a config-level proxy
 
 The config-level `proxy` applies only to requests made by this extension's tools. Other traffic in the host process — such as the coding agent's own model API calls — is never routed through it, so a configured proxy that is temporarily down cannot break unrelated requests.
 
+A tool call can override the config-level `proxy` with `""` or another proxy. Set `"lockProxy": true` to make the configured proxy the only route, for example when the proxy injects real API keys and the extension holds placeholders. Then a call that omits `proxy` or passes the same URL uses the configured proxy, and a call that passes `""` or a different proxy fails before any request is sent, with a message telling the caller to omit `proxy`. `lockProxy` without a configured `proxy` fails every call rather than connecting directly. It covers this extension's tools only, not other network access in the process.
+
 ```jsonc
 // ~/.pi/agent/web-search.json — global proxy for all tools
 {
-  "proxy": "http://mcr:4444"
+  "proxy": "http://mcr:4444",
+  "lockProxy": true // optional: reject per-call proxy overrides
 }
 ```
 
 Localhost, `127.0.0.1`, `[::1]`, and any host matching the `NO_PROXY` environment variable are never proxied.
 
-When Readability fails or returns only a cookie notice, the extension can retry configured Firecrawl extraction, configured Crawl4AI extraction, Jina Reader (handles JS rendering server-side, no API key needed), TinyFish, Search1API, Querit, Kagi Extract, Ollama Web Fetch, Parallel, Bright Data Web Unlocker, Gemini URL Context API, and Gemini Web extraction when browser cookies are enabled. Configure `fetchRouting.providers` to change the order or set of `fetch_content` providers. Supported values are `http`, `firecrawl`, `crawl4ai`, `jina`, `tinyfish`, `search1api`, `querit`, `kagi`, `ollama`, `parallel`, `parallel-mcp`, `brightdata`, and `gemini`; when absent, the default order is unchanged. `parallel-mcp` is not in the default fetch order and must be listed explicitly. For remote HTTP(S) targets, third-party hosted providers are disabled unless `fetchRouting.allowRemoteHostedProviders` is `true`, because hosted services perform their own fetch and can see a different redirect chain than the local safety gate. Firecrawl and Crawl4AI stay available as configured self-hosted extraction services. Firecrawl requests are cache-only by default and require an explicit fresh-scrape opt-in before the Firecrawl server can fetch target URLs. Bright Data Web Unlocker runs last of the remote scraping providers, ahead of only the Gemini fallbacks, because it is billed per request against a paid account; it is skipped unless both a key and an `unblocker` zone are configured. It applies no minimum-length check, so any non-empty body it returns — including a short consent or paywall stub — is the final answer for that URL and the Gemini fallbacks are not tried. Handles SPAs, JS-heavy pages, and anti-bot protections transparently. Also parses Next.js RSC flight data when present. HTML extraction also surfaces registered discovery relations (`service-desc`, `service-doc`, `service-meta`, `api-catalog`, `describedby`) from the HTTP `Link` header and matching `link`/`a[rel]` markup. Readable or rendered content remains primary; on an empty shell, the normal extraction fallbacks run before declared links are returned on their own.
+When Readability fails or returns only a cookie notice, the extension can retry configured Firecrawl extraction, configured Crawl4AI extraction, Jina Reader (handles JS rendering server-side, no API key needed), TinyFish, Search1API, Querit, Kagi Extract, Ollama Web Fetch, Parallel, Bright Data Web Unlocker, DeepSeek Fetch, Exa contents, Tabstack Extract, SpecStream Extract, Gemini URL Context API, and Gemini Web extraction when browser cookies are enabled. Configure `fetchRouting.providers` to change the order or set of `fetch_content` providers. Supported values are `http`, `firecrawl`, `crawl4ai`, `jina`, `tinyfish`, `search1api`, `querit`, `kagi`, `ollama`, `parallel`, `parallel-mcp`, `brightdata`, `gemini`, `deepseek`, `exa`, `tabstack`, and `specstream`; when absent, the default order is unchanged. `parallel-mcp`, `deepseek`, `exa`, `tabstack`, and `specstream` are not in the default fetch order and must be listed explicitly. `exa` reads the page with Exa's `POST /contents` endpoint using the same `exaApiKey`/`EXA_API_KEY` as Exa search (it is skipped without a key, and Exa bills each page); a page Exa cannot read is reported as an Exa error rather than an empty page. For remote HTTP(S) targets, third-party hosted providers are disabled unless `fetchRouting.allowRemoteHostedProviders` is `true`, because hosted services perform their own fetch and can see a different redirect chain than the local safety gate. Firecrawl and Crawl4AI stay available as configured self-hosted extraction services. Firecrawl requests are cache-only by default and require an explicit fresh-scrape opt-in before the Firecrawl server can fetch target URLs. Bright Data Web Unlocker runs last of the remote scraping providers, ahead of only the Gemini fallbacks, because it is billed per request against a paid account; it is skipped unless both a key and an `unblocker` zone are configured. It applies no minimum-length check, so any non-empty body it returns — including a short consent or paywall stub — is the final answer for that URL and the Gemini fallbacks are not tried. Handles SPAs, JS-heavy pages, and anti-bot protections transparently. Also parses Next.js RSC flight data when present. HTML extraction also surfaces registered discovery relations (`service-desc`, `service-doc`, `service-meta`, `api-catalog`, `describedby`) from the HTTP `Link` header and matching `link`/`a[rel]` markup. Readable or rendered content remains primary; on an empty shell, the normal extraction fallbacks run before declared links are returned on their own.
 
 ## How It Works
 
@@ -363,7 +483,7 @@ fetch_content(url)
   → Video file?  Gemini API (Files API) → Gemini Web (if browser cookies enabled)
   → GitHub URL?  Clone repo, return file contents + local path
   → YouTube URL? Gemini Web (if browser cookies enabled) → Gemini API → Perplexity
-  → HTTP fetch → PDF? Datalab → Gemini API → local text extraction, save to temp pi-web-pdf
+  → HTTP fetch (asks for markdown first; raw mode does not) → PDF? Self-hosted endpoint → Datalab → Gemini API → local text extraction, save to temp pi-web-pdf
                → HTML? Readability (+ declared Link/rel discovery) → RSC parser → Firecrawl → Crawl4AI (each if configured) → third-party hosted fallbacks only when fetchRouting.allowRemoteHostedProviders is enabled
                → Text/JSON/Markdown? Return directly
 ```
@@ -429,10 +549,13 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
   "exaApiKey": "exa-...",
   "exaBaseUrl": "https://gateway.example.com/exa",
   "parallelApiKey": "...",
+  "parallelBaseUrl": "https://gateway.example.com/parallel",
   "tinyfishApiKey": "sk-tinyfish-...",
   "search1apiApiKey": "...",
   "tavilyApiKey": "tvly-...",
   "tavilyBaseUrl": "https://gateway.example.com/tavily",
+  "tabstackApiKey": "$TABSTACK_API_KEY",
+  "tabstackResearchMode": "fast",
   "youApiKey": "your-ydc-api-key",
   "jinaApiKey": "$JINA_API_KEY",
   "serpdiveApiKey": "sd_live_...",
@@ -440,10 +563,23 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
   "kagiApiKey": "$KAGI_API_KEY",
   "ollamaApiKey": "$OLLAMA_API_KEY",
   "valyuApiKey": "$VALYU_API_KEY",
+  "keenableApiKey": "$KEENABLE_API_KEY",
+  "ceramicApiKey": "$CERAMIC_API_KEY",
+  "linkupApiKey": "$LINKUP_API_KEY",
+  "linkupDepth": "fast",
+  "deepseekApiKey": "$DEEPSEEK_API_KEY",
   "serpbaseApiKey": "$SERPBASE_API_KEY",
+  "serpapiBaseUrl": "https://gateway.example.com/serpapi",
   "serpapiApiKey": "$SERPAPI_KEY",
+  "serperBaseUrl": "https://gateway.example.com/serper",
   "serperApiKey": "$SERPER_API_KEY",
   "serplyApiKey": "$SERPLY_API_KEY",
+  "searchapiApiKey": "$SEARCHAPI_API_KEY",
+  "outcrawlApiKey": "$OUTCRAWL_API_KEY",
+  "sofyaApiKey": "$SOFYA_API_KEY",
+  "cloroApiKey": "$CLORO_API_KEY",
+  "automApiKey": "$AUTOM_API_KEY",
+  "specstreamApiKey": "$SPECSTREAM_API_KEY",
   "baizhiApiKey": "$BAIZHI_API_KEY",
   "zaiApiKey": "$ZAI_API_KEY",
   "brightdataApiKey": "$BRIGHTDATA_API_KEY",
@@ -458,10 +594,14 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
     "CF-Access-Client-Id": "xxxxxxxx.access",
     "CF-Access-Client-Secret": "xxxxxxxx"
   },
+  "degoogBaseUrl": "https://degoog.example.com",
+  "degoogApiKey": "$DEGOOG_API_KEY",
+  "degoogEngines": ["degoog-org-official-extensions-brave-engine"],
   "firecrawlBaseUrl": "https://crawl.example.com",
   "firecrawlApiKey": "fc-...",
   "firecrawlApiVersion": "v2",
   "firecrawlFreshScrape": false,
+  "firecrawlPdfMaxPages": 50,
   "crawl4aiBaseUrl": "https://crawl4ai.example.com",
   "crawl4aiApiToken": "$CRAWL4AI_API_TOKEN",
   "brightdataUnlockerZone": "pi_unlocker",
@@ -516,6 +656,7 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
   "allowBrowserCookies": false,
   "searchModel": "gemini-3.6-flash",
   "summaryModel": "anthropic/claude-haiku-4-5",
+  "queryRewriteModel": "current",
   "summaryGenerationDeadlineMs": 30000,
   "summaryInstructions": "- Preserve concrete figures verbatim: prices, limits, versions, dates.\n- Name the product version each claim applies to.",
   "maxInlineContentChars": 30000,
@@ -553,7 +694,10 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
     "domainPolicy": {
       "allow": ["example.com"],
       "deny": ["blocked.example.com"]
-    }
+    },
+    "redirects": "same-origin",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+    "curl": "curl_chrome146"
   },
   "shortcuts": {
     "curate": "ctrl+shift+s",
@@ -570,11 +714,13 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
 
 `webSearch.allowedProviders` is an optional, non-empty search-provider allowlist with no duplicate entries. When omitted, every current search provider remains permitted. When present, explicit scalar and array requests for providers outside the list fail before any provider request, while `auto`, `all`, configured routing, `source_check`, and Curator use only listed providers. The allowlist does not make explicit-only or paid providers eligible for automatic fallback or `all`; they must still be named explicitly or included in `searchRouting.providers`. A configured `provider`/`searchProvider` or `searchRouting.providers` entry outside the allowlist is rejected as invalid configuration. This setting affects search only: it does not restrict `fetchRouting`, fetch answer models, or summary models.
 
-`summaryModel` accepts an optional thinking-level suffix, such as `anthropic/claude-haiku-4-5:low`. Supported suffixes are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
+`summaryModel` accepts an optional thinking-level suffix, such as `anthropic/claude-haiku-4-5:low`. Supported suffixes are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. `"current"` uses the model the Pi session is on when the search starts, such as a local model; add a suffix (`"current:low"`) to set a thinking level, since the session's own level is not copied. Pi `enabledModels` still applies. When `summaryModel` is set, no fallback model is tried, including for a model you pick in the curator: if the model is unavailable or fails, you get the deterministic summary with the reason it failed, not a summary from another provider. Unset, the built-in list of small models is tried in order. Any other value makes summary workflows fail with an error naming the config file.
+
+`queryRewriteModel` picks the model for the curator's query rewrite and takes the same values as `summaryModel`. When set, only that model is used, and if it is unavailable or fails the rewrite shows an error. Unset, the rewrite tries `anthropic/claude-haiku-4-5`, then `google/gemini-3.6-flash`, then `openai/gpt-5-mini`.
 
 `summaryInstructions` appends custom text to the Requirements section of the summary prompt used by the curator UI and `auto-summary` mode (e.g. `"- Preserve concrete figures verbatim: prices, limits, versions, dates.\n- Name the product version each claim applies to."`). The text is passed verbatim to the summary model, so use one `- ` bullet per requirement. It is additive: the built-in guardrails (no invented sources, explicit weak/conflicting-evidence notes, the Sources section) always stay in place, and curator regeneration feedback is still appended afterwards. Missing, non-string, or blank values leave the default prompt unchanged.
 
-All provider API-key fields (`openaiApiKey`, `braveApiKey`, `parallelApiKey`, `tinyfishApiKey`, `search1apiApiKey`, `searchinfinityApiKey`, `queritApiKey`, `tavilyApiKey`, `youApiKey`, `jinaApiKey`, `serpdiveApiKey`, `kagiApiKey`, `bochaApiKey`, `ollamaApiKey`, `valyuApiKey`, `serpbaseApiKey`, `serpapiApiKey`, `serperApiKey`, `serplyApiKey`, `baizhiApiKey`, `zaiApiKey`, `anysearchApiKey`, `xcrawlApiKey`, `xaiApiKey`, `mistralApiKey`, `brightdataApiKey`, `firecrawlApiKey`, `crawl4aiApiToken`, `exaApiKey`, `perplexityApiKey`, `geminiApiKey`, `datalabApiKey`, and `cloudflareApiKey`) accept explicit credential sources. Use `$NAME` or `${NAME}` to read one named environment variable, or prefix a trusted local shell command with `!` to resolve one value at provider request time. Escape `$$` as a literal leading `$` and `$!` as a literal leading `!`:
+All provider API-key fields (`openaiApiKey`, `braveApiKey`, `parallelApiKey`, `tinyfishApiKey`, `search1apiApiKey`, `searchinfinityApiKey`, `queritApiKey`, `tavilyApiKey`, `tabstackApiKey`, `youApiKey`, `jinaApiKey`, `serpdiveApiKey`, `kagiApiKey`, `bochaApiKey`, `ollamaApiKey`, `valyuApiKey`, `serpbaseApiKey`, `serpapiApiKey`, `serperApiKey`, `serplyApiKey`, `searchapiApiKey`, `outcrawlApiKey`, `sofyaApiKey`, `cloroApiKey`, `automApiKey`, `specstreamApiKey`, `baizhiApiKey`, `zaiApiKey`, `keenableApiKey`, `ceramicApiKey`, `linkupApiKey`, `ninerouterApiKey`, `deepseekApiKey`, `degoogApiKey`, `anysearchApiKey`, `xcrawlApiKey`, `xaiApiKey`, `mistralApiKey`, `brightdataApiKey`, `firecrawlApiKey`, `crawl4aiApiToken`, `exaApiKey`, `perplexityApiKey`, `geminiApiKey`, `datalabApiKey`, and `cloudflareApiKey`) accept explicit credential sources. Use `$NAME` or `${NAME}` to read one named environment variable, or prefix a trusted local shell command with `!` to resolve one value at provider request time. Escape `$$` as a literal leading `$` and `$!` as a literal leading `!`:
 
 ```json
 {
@@ -585,13 +731,58 @@ All provider API-key fields (`openaiApiKey`, `braveApiKey`, `parallelApiKey`, `t
 }
 ```
 
-This syntax applies to provider credentials only; other configuration fields are not interpolated. `firecrawlApiKey`, `crawl4aiApiToken`, `kagiApiKey`, `ollamaApiKey`, `valyuApiKey`, `serpbaseApiKey`, `serpapiApiKey`, `serperApiKey`, `serplyApiKey`, `baizhiApiKey`, `zaiApiKey`, `mistralApiKey`, and `brightdataApiKey` use the same credential-source rules, while `braveBaseUrl`, `exaBaseUrl`, `tavilyBaseUrl`, `firecrawlBaseUrl`, `firecrawlApiVersion`, `firecrawlFreshScrape`, `crawl4aiBaseUrl`, `brightdataSerpZone`, `brightdataUnlockerZone`, and `zaiEndpoint` are literal config values.
+This syntax applies to provider credentials only; other configuration fields are not interpolated. `firecrawlApiKey`, `crawl4aiApiToken`, `kagiApiKey`, `ollamaApiKey`, `valyuApiKey`, `serpbaseApiKey`, `serpapiApiKey`, `serperApiKey`, `serplyApiKey`, `searchapiApiKey`, `outcrawlApiKey`, `sofyaApiKey`, `cloroApiKey`, `automApiKey`, `specstreamApiKey`, `baizhiApiKey`, `zaiApiKey`, `keenableApiKey`, `ceramicApiKey`, `linkupApiKey`, `ninerouterApiKey`, `deepseekApiKey`, `degoogApiKey`, `mistralApiKey`, and `brightdataApiKey` use the same credential-source rules, while API base URLs, `firecrawlApiVersion`, `firecrawlFreshScrape`, `firecrawlPdfMaxPages`, `crawl4aiBaseUrl`, `degoogBaseUrl`, `degoogEngines`, `brightdataSerpZone`, `brightdataUnlockerZone`, and `zaiEndpoint` are literal config values.
 
-A command source is not run while the extension loads or registers tools. Each selected provider request runs it again with a five-second timeout, a 16 KiB output limit, a minimized environment, and a one-line non-empty stdout requirement. Command text and stderr are omitted from errors. These commands are trusted local configuration, not a same-user process isolation boundary; use absolute executable paths and protect the config file. `OP_SESSION_*` and `OP_SERVICE_ACCOUNT_TOKEN`, when present in Pi's environment, are forwarded to trusted resolver commands so 1Password CLI sessions and service accounts can be reused without storing their credentials in config. For example, `"braveApiKey": "!/absolute/path/to/op read 'op://Automation/Brave/credential'"` resolves that item after you replace the executable placeholder with your trusted installation's absolute path, but the `op://` argument is not an authorization boundary: every configured resolver command that receives the token can exercise all vault and item permissions granted to its service account. Prefer a narrowly scoped service account. An explicit source overrides legacy provider environment variables and fails that provider locally rather than falling back with a stale credential. Direct Google Gemini API requests send the resolved key only in the `x-goog-api-key` header, never in the URL.
+A command source is not run while the extension loads or registers tools. Each selected provider request runs it again with a five-second timeout, a 16 KiB output limit, a minimized environment, and a one-line non-empty stdout requirement. Command text and stderr are omitted from errors. On Windows the command runs in Git Bash (or `bash.exe` on `PATH`), like Pi's own `!command` config values, so POSIX syntax such as `$HOME` works; it falls back to `cmd.exe` when no bash is found. These commands are trusted local configuration, not a same-user process isolation boundary; use absolute executable paths and protect the config file. `OP_SESSION_*` and `OP_SERVICE_ACCOUNT_TOKEN`, when present in Pi's environment, are forwarded to trusted resolver commands so 1Password CLI sessions and service accounts can be reused without storing their credentials in config. For example, `"braveApiKey": "!/absolute/path/to/op read 'op://Automation/Brave/credential'"` resolves that item after you replace the executable placeholder with your trusted installation's absolute path, but the `op://` argument is not an authorization boundary: every configured resolver command that receives the token can exercise all vault and item permissions granted to its service account. Prefer a narrowly scoped service account. An explicit source overrides legacy provider environment variables and fails that provider locally rather than falling back with a stale credential. Direct Google Gemini API requests send the resolved key only in the `x-goog-api-key` header, never in the URL.
 
 `mistralSearchModel` defaults to `mistral-small-latest` and must be a non-empty string. `mistralSearchTool` defaults to `web_search` and accepts only `web_search` or the opt-in `web_search_premium` tool.
 
-Set `braveBaseUrl`, `exaBaseUrl`, or `tavilyBaseUrl` to route those providers through a compatible HTTPS API gateway. `BRAVE_BASE_URL`, `EXA_BASE_URL`, and `TAVILY_BASE_URL` are the environment-variable equivalents and take precedence over config. Brave appends `/web/search`; Exa and Tavily append `/search`. Defaults remain the providers' official API roots. `exaBaseUrl` applies only to keyed direct API calls; zero-config Exa MCP search continues to use Exa's hosted MCP endpoint. Invalid overrides fail before a request is sent instead of falling back to an official endpoint, and credential headers are removed if a gateway redirects to another origin.
+These providers accept an API base URL for compatible gateways. Environment variables take precedence over config; path prefixes are preserved and trailing slashes are removed. Ollama, DeepSeek, and Tabstack read `PI_OLLAMA_BASE_URL`, `PI_DEEPSEEK_BASE_URL`, and `PI_TABSTACK_BASE_URL`, because other tools commonly set the bare `OLLAMA_BASE_URL` (a local Ollama server), `DEEPSEEK_BASE_URL` (an OpenAI-compatible `/v1` root), and `TABSTACK_BASE_URL` (the Tabstack SDKs' `/v1` root); the bare names are ignored.
+
+| Config | Environment variable | Appended paths |
+|---|---|---|
+| `braveBaseUrl` | `BRAVE_BASE_URL` | `/web/search` |
+| `exaBaseUrl` | `EXA_BASE_URL` | `/search`, `/contents` |
+| `tavilyBaseUrl` | `TAVILY_BASE_URL` | `/search` |
+| `anysearchBaseUrl` | `ANYSEARCH_BASE_URL` | `/v1/search` |
+| `automBaseUrl` | `AUTOM_BASE_URL` | `/v1/google/search` |
+| `bochaBaseUrl` | `BOCHA_BASE_URL` | `/v1/web-search` |
+| `brightdataBaseUrl` | `BRIGHTDATA_BASE_URL` | `/request` (SERP and Web Unlocker) |
+| `ceramicBaseUrl` | `CERAMIC_BASE_URL` | `/search` |
+| `cloroBaseUrl` | `CLORO_BASE_URL` | `/v1/monitor/google`, `/v1/monitor/aimode`, `/v1/monitor/bing/aimode` |
+| `specstreamBaseUrl` | `SPECSTREAM_BASE_URL` | `/v1/web-search`, `/v1/extract` |
+| `deepseekBaseUrl` | `PI_DEEPSEEK_BASE_URL` | `/v1/tools/search`, `/v1/tools/fetch` |
+| `jinaSearchBaseUrl` | `JINA_SEARCH_BASE_URL` | `/{encoded query}` |
+| `kagiBaseUrl` | `KAGI_BASE_URL` | `/api/v1/search`, `/api/v1/extract` |
+| `keenableBaseUrl` | `KEENABLE_BASE_URL` | `/v1/search`, `/v1/search/public` |
+| `linkupBaseUrl` | `LINKUP_BASE_URL` | `/v1/search` |
+| `mistralSearchBaseUrl` | `MISTRAL_SEARCH_BASE_URL` | `/v1/conversations` |
+| `ollamaBaseUrl` | `PI_OLLAMA_BASE_URL` | `/api/web_search`, `/api/web_fetch` |
+| `outcrawlBaseUrl` | `OUTCRAWL_BASE_URL` | `/v1/search` |
+| `sofyaBaseUrl` | `SOFYA_BASE_URL` | `/v1/search` |
+| `parallelBaseUrl` | `PARALLEL_BASE_URL` | `/v1/search`, `/v1/extract` |
+| `perplexityBaseUrl` | `PERPLEXITY_BASE_URL` | `/search`, `/chat/completions` |
+| `queritBaseUrl` | `QUERIT_BASE_URL` | `/v1/search`, `/v1/contents` |
+| `search1apiBaseUrl` | `SEARCH1API_BASE_URL` | `/search`, `/crawl` |
+| `searchapiBaseUrl` | `SEARCHAPI_BASE_URL` | `/api/v1/search` |
+| `searchinfinityBaseUrl` | `SEARCHINFINITY_BASE_URL` | `/search_api/web_search` |
+| `serpapiBaseUrl` | `SERPAPI_BASE_URL` | `/search.json` |
+| `serpbaseBaseUrl` | `SERPBASE_BASE_URL` | `/google/search` |
+| `serpdiveBaseUrl` | `SERPDIVE_BASE_URL` | `/v1/search` |
+| `serperBaseUrl` | `SERPER_BASE_URL` | `/search` |
+| `serplyBaseUrl` | `SERPLY_BASE_URL` | `/v1/search` |
+| `tabstackBaseUrl` | `PI_TABSTACK_BASE_URL` | `/v1/research`, `/v1/extract/markdown` |
+| `valyuBaseUrl` | `VALYU_BASE_URL` | `/v1/search` |
+| `xcrawlBaseUrl` | `XCRAWL_BASE_URL` | `/v1/serp` |
+| `youBaseUrl` | `YOU_BASE_URL` | `/v1/search` |
+
+Defaults remain the providers' official API roots. Overrides require HTTPS, except HTTP is allowed on loopback hosts (`localhost`, `127.0.0.0/8`, and `::1`). URLs with credentials, query parameters, or fragments are rejected before a request is sent; invalid overrides never fall back to an official endpoint. Cross-origin redirects remove credential headers and the `api_key` query parameter used by SerpApi and SerpBase. `exaBaseUrl` applies only to keyed direct API calls; zero-config Exa MCP search continues to use Exa's hosted MCP endpoint. `parallelBaseUrl` does not change the separate Parallel MCP provider.
+
+To use a plain-HTTP gateway on another host, such as a Kubernetes Service (`"braveBaseUrl": "http://search-gateway:8080/brave/res/v1"`), set `"allowHttpBaseUrls": true` in `web-search.json` or `PI_WEB_ACCESS_ALLOW_HTTP_BASE_URLS=true`. The environment variable wins over config and accepts `true`, `false`, `1`, or `0`; any other value, or a non-boolean config value, is a configuration error. The switch defaults to `false` and lets every base URL above use `http://`. **HTTP sends API keys and request data in plaintext**, so enable it only for gateways on a trusted network. All the other checks above still apply.
+
+These settings change API destinations, not provider protocols, credentials, pricing options, or activation. Search and extraction use the same root where listed. Existing SSRF and target-domain checks still apply to extraction; in particular, Kagi, Ollama, and Bright Data Web Unlocker gateway addresses remain subject to their API transport's SSRF checks. For a loopback gateway on those extraction transports, use a literal address (`http://127.0.0.1:8080` or `http://[::1]:8080`) and add its matching range (`127.0.0.1/32` or `::1/128`) to `ssrf.allowRanges`. These transports reject `localhost` even when allowed ranges are configured.
+
+Existing Responses endpoint settings (`openaiResponsesUrl`, `xaiResponsesUrl`), Gemini API routing, and self-hosted providers keep their current semantics. No new overrides are added for TinyFish's two-origin API, Kimi Code sign-in, hosted MCP transports, browser-backed search, or the keyless Jina Reader. `jinaSearchBaseUrl` affects only authenticated Jina search, not Reader requests.
 
 `authFetch` configures named local browser-cookie auth profiles for explicit `fetch_content` calls. A profile can be a host array (`"work": ["docs.company.com"]`) or an object with `hosts`, optional `chromeProfile`, `redirects: "same-origin"`, and `cache: "session" | "off"`.
 
@@ -599,17 +790,25 @@ Set `braveBaseUrl`, `exaBaseUrl`, or `tavilyBaseUrl` to route those providers th
 
 `fetchContent.domainPolicy` is an optional hostname allow/deny policy for `fetch_content` target URLs. It is off when omitted. Each bare hostname matches itself and its subdomains; `deny` wins when a hostname matches both lists. The policy is checked before HTTP(S) target handling and before each redirect followed by this extension's own fetch path. Local file paths and non-HTTP sources are not subject to this policy. It is an additional restriction: the existing SSRF guard still blocks private and internal destinations. Remote extraction services can still perform their own DNS, redirects, and egress after this extension preflights the submitted target URL, so third-party hosted HTTP(S) fallbacks stay disabled unless `fetchRouting.allowRemoteHostedProviders` is enabled for separately isolated provider deployments.
 
+`fetchContent.redirects: "same-origin"` turns on a same-origin redirect policy for every page fetch, including `web_search` `includeContent` and `source_check`. The `fetch_content` parameter `redirects: "same-origin"` turns it on for one call; omitting it never turns a configured policy off. Under the policy every redirect target, including in `auth` profile and `mode: "raw"` fetches, must match the requested URL's scheme, hostname and effective port. The check runs before the target is resolved or requested, so in an A → B → A chain B is never contacted. A refused redirect returns an error with no page content, and no other extraction provider or retry runs after it. Only this extension's own HTTP fetch is used: Jina Reader, Firecrawl, Crawl4AI, the hosted providers and Gemini are disabled, and GitHub issue/PR, GitHub repository and YouTube URLs are refused by name, even when those integrations are turned off. In `mode: "raw"` and `auth` fetches those URLs skip the GitHub and YouTube integrations and go through the same checked HTTP fetch instead. A trusted Pi extension can enforce the policy per call by setting `event.input.redirects = "same-origin"` in a `tool_call` handler for `fetch_content`. Local files and videos are not subject to the policy.
+
+`fetchContent.userAgent` sets the `User-Agent` header of this extension's own direct HTTP page fetch, which `fetch_content`, `web_search` `includeContent`, and `source_check` use, including `auth` profile and `mode: "raw"` fetches. It defaults to `OpenAI File Downloader, XaiImageApiFetch/1.0`; set it when a site rejects that default, for example to a regular browser User-Agent. Extraction providers such as Jina Reader or Firecrawl are not affected. The value must be a non-empty string of printable ASCII characters; any other value fails the page fetch with a config error.
+
+`fetchContent.curl` sends the same direct HTTP page fetch through a curl command instead of Node's built-in fetch. Many sites block Node's fetch because of how it opens the secure connection. [curl-impersonate](https://github.com/lexiforest/curl-impersonate) opens it the way a browser does, so point this setting at one of its wrapper scripts, such as `"curl_chrome146"`. A string names one executable, found on `PATH` or given as a path. An array names the executable and its arguments, such as `["/opt/curl-impersonate/curl-impersonate", "--impersonate", "chrome146"]`, which also works on Windows, where wrapper scripts can't be started directly. Plain `curl` works too, but sites block it about as often as Node's fetch. When `curl` is set, the extension doesn't send its default `User-Agent`, so the command's own browser `User-Agent` is used, and a configured `fetchContent.userAgent` is still sent. The extension turns off curl's own redirect following, even when the command or `~/.curlrc` asks for it, so the extension still follows and checks each redirect itself. The SSRF checks, domain policy, timeout, size limit, and extraction stay the same; curl stops a download that is over the size limit. A configured or per-call `proxy` is passed to the command with `-x`. Otherwise curl ignores proxy environment variables such as `HTTPS_PROXY`, except when `ssrf.trustEnvProxy` is on and the variable covers the host: the extension then leaves that host to the proxy instead of checking it, so curl connects through the proxy. `auth` profile fetches keep Node's fetch, so browser cookies are never put on a command line, and extraction providers and search APIs are not affected. A command that can't be found fails the page fetch with `fetchContent.curl command not found` instead of falling back to other providers, and any value other than a non-empty string or a non-empty array of non-empty strings fails the page fetch with a config error. When `curl` is not set, Node's fetch is used as before.
+
 `fetch.timeout` is an optional positive finite number of seconds for direct HTTP fetches and the Jina Reader fallback. When omitted, both use a 30-second budget. Fractional values are supported and rounded up to at least 1 millisecond; values that cannot be converted to a finite safe integer delay from 1 through Node's 2,147,483,647 ms timer maximum are rejected. An invalid declared value fails closed with an error naming `web-search.json`. An internal/per-call `timeoutMs` override takes precedence over this setting. Other remote extraction fallbacks keep their own documented budgets.
 
-`fetch.defaultMode` sets the mode used when `fetch_content` omits `mode`, and `fetch.allowedModes` controls which modes the tool exposes and accepts. Valid modes are `readable`, `raw`, and `answer`. By default, the default mode is `readable` and all three modes are allowed. The default must be included in the non-empty, duplicate-free allowed list. An explicitly requested disabled mode fails before fetching or invoking a model and is never replaced with another mode. Raw mode remains direct HTTP-only and never runs readability, specialized source handling, or hosted extraction fallbacks.
+`fetch.defaultMode` sets the mode used when `fetch_content` omits `mode`, and `fetch.allowedModes` controls which modes the tool exposes and accepts. Valid modes are `readable`, `raw`, `answer`, and `extract`. By default, the default mode is `readable` and `readable`, `raw`, and `answer` are allowed; `extract` is allowed only when listed and cannot be the default. The default must be included in the non-empty, duplicate-free allowed list. An explicitly requested disabled mode fails before fetching or invoking a model and is never replaced with another mode. Raw mode remains direct HTTP-only and never runs readability, specialized source handling, or hosted extraction fallbacks.
 
-`fetch.answerProvider` and `fetch.answerModel` are an optional pair that selects the model used by `fetch_content` answer mode when no per-call `answerModel` is supplied. Both values must be non-empty strings and must identify an enabled text-capable model available in Pi's model registry; invalid or partial configuration fails closed. This is opt-in: answering with the configured provider/model can send fetched page text outside the current session and may incur that provider's costs. A per-call `answerModel` override is resolved first and remains usable even when these configured defaults are malformed.
+`fetch.answerProvider` and `fetch.answerModel` are an optional pair that selects the model used by `fetch_content` answer mode when no per-call `answerModel` is supplied. Both values must be non-empty strings and must identify an enabled text-capable model available in Pi's model registry; invalid or partial configuration fails closed. This is opt-in: answering with the configured provider/model can send fetched page text, images and video frames outside the current session and may incur that provider's costs. A per-call `answerModel` override is resolved first and remains usable even when these configured defaults are malformed.
 
-Set `searxngBaseUrl` or `SEARXNG_BASE_URL` to use a self-hosted SearXNG JSON API. A configured endpoint is preferred first in `auto` mode for local/private search. Its base URL and redirects remain subject to the SSRF guard; add only the narrowest self-hosted range to `ssrf.allowRanges` when it resolves to a private or synthetic range. Optional `searxngHeaders` merges extra HTTP headers into each SearXNG request (string values only; invalid header names are ignored), which is useful for reverse-proxy or Zero Trust auth such as Cloudflare Access service tokens (`CF-Access-Client-Id` / `CF-Access-Client-Secret`). Configured headers override the default `Accept: application/json` when the same name is supplied. Thanks to Marcos A. Núñez (@marnunez) for PR #107 and Avinash Kanaujiya (@avinashkanaujiya) for issue #105.
+Set `searxngBaseUrl` or `SEARXNG_BASE_URL` to use a self-hosted SearXNG JSON API. A configured endpoint is preferred first in `auto` mode for local/private search. A configured SearXNG base URL may use `localhost`, `127.0.0.0/8`, or `::1` without adding those ranges to global `ssrf.allowRanges`; a base URL on another private or synthetic range needs a narrow `ssrf.allowRanges` entry. The base URL and its redirects are otherwise validated like other remote requests, and configured headers are stripped from cross-origin redirects. Optional `searxngHeaders` merges extra HTTP headers into each SearXNG request (string values only; invalid header names are ignored), which is useful for reverse-proxy or Zero Trust auth such as Cloudflare Access service tokens (`CF-Access-Client-Id` / `CF-Access-Client-Secret`). Configured headers override the default `Accept: application/json` when the same name is supplied. Thanks to Marcos A. Núñez (@marnunez) for PR #107 and Avinash Kanaujiya (@avinashkanaujiya) for issue #105.
 
-**DuckDuckGo.** DuckDuckGo HTML search is keyless and explicit-only. Select it with `provider: "duckduckgo"` or place it in `searchRouting`; it is never chosen by `auto` and never participates in `provider: "all"`. Domain filters are enforced locally after DuckDuckGo redirect URLs are decoded. `recencyFilter` is not guaranteed because the HTML endpoint has no documented stable time parameter. A 200 page with no parseable results is reported as an invalid response, so routing can continue when `fallbackOn` includes `"invalid-response"`.
+**degoog.** Set `degoogBaseUrl` or `DEGOOG_URL` to use a self-hosted [degoog](https://degoog.org) metasearch instance, or omit both to use the public `https://degoog.org` instance. degoog is keyless and explicit-only: select it with `provider: "degoog"` or place it in `searchRouting`; it is never chosen by `auto` and never participates in `provider: "all"`, so queries do not leave for a third-party metasearch instance unless you ask. When the instance protects its search routes, set `degoogApiKey` or `DEGOOG_API_KEY` and the key is sent as `Authorization: Bearer <key>`; the API key and any `degoogHeaders` are stripped from cross-origin redirects. `degoogEngines` restricts the request to specific engine ids from the instance's engine list (an array of strings), which is sent as the `engines` field on `POST /api/search`; omitting it uses the instance defaults. `recencyFilter` maps to degoog's `time` parameter, and domain filters become `site:`/`-site:` query clauses plus a local result filter; multiple allowed domains are grouped as `(site:a OR site:b)` so the query terms apply to every branch. Only absolute HTTP(S) result URLs are returned as sources, and duplicate URLs are collapsed. A 200 response without a results array is reported as an invalid response, so a configured route can continue when `fallbackOn` includes `"invalid-response"`, while a genuine empty `results` array remains a successful empty search. The configured base URL and redirects remain subject to the SSRF guard; add only the narrowest self-hosted range to `ssrf.allowRanges` when it resolves to a private or synthetic range. Optional `degoogHeaders` merges extra HTTP headers (string values only; invalid header names are ignored) for reverse-proxy or Zero Trust auth. Values from `degoogApiKey` and the configured `degoogHeaders` are redacted from reported upstream error text, and a request that exceeds the 30-second deadline fails as a timeout instead of being recorded as a completed request.
 
-Set `firecrawlBaseUrl` or `FIRECRAWL_BASE_URL` to use Firecrawl for `web_search` and as an extraction fallback for `fetch_content`. Search calls `/v2/search` by default, requests `sources: ["web"]`, maps `numResults` to `limit`, maps `recencyFilter` to Firecrawl's `tbs`, and maps domain filters to `includeDomains` or `excludeDomains` when possible. With `includeContent: true`, Firecrawl search adds Markdown scrape options and returns successful result Markdown as inline content. Fetch extraction calls `/v2/scrape` by default. Set `firecrawlApiVersion` or `FIRECRAWL_API_VERSION` to `v1` for older self-hosted images. Firecrawl page scraping is cache-only by default (`lockdown: true`), so the Firecrawl server does not make fresh outbound target requests unless you explicitly set `firecrawlFreshScrape: true` or `FIRECRAWL_FRESH_SCRAPE=1`. Enable fresh scraping only for a Firecrawl deployment whose own egress, redirects, DNS rebinding behavior, and internal-network access are isolated or allowlisted; this extension can preflight submitted fetch URLs but cannot control network requests made by the Firecrawl server. A configured Firecrawl API base URL may use `localhost`, `127.0.0.0/8`, or `::1` without adding those loopback ranges to global `ssrf.allowRanges`; that exception is only for Firecrawl API calls, not submitted fetch/search target URLs. The configured Firecrawl API base URL and redirects are otherwise still validated by the same SSRF guard as other remote requests, and Firecrawl credentials are stripped from cross-origin API redirects.
+**DuckDuckGo.** DuckDuckGo HTML search is keyless and explicit-only. Select it with `provider: "duckduckgo"` or place it in `searchRouting`; it is never chosen by `auto` and never participates in `provider: "all"`. Domain filters are enforced locally after DuckDuckGo redirect URLs are decoded. `recencyFilter` is not guaranteed because the HTML endpoint has no documented stable time parameter. A page that is neither results nor DuckDuckGo's "no results" page is reported as an invalid response, so routing can continue when `fallbackOn` includes `"invalid-response"`; DuckDuckGo's bot check is reported as `quota`. DuckDuckGo shows that bot check to the whole IP address, browsers included, for 7 to 30 minutes once too many searches come from it. In testing, 22 searches in 10 minutes were enough on one day, and right after a block clears even three quick searches bring it back. So DuckDuckGo searches in one Pi process start at least 10 seconds apart, with at most 10 in any 10 minutes. A search that would have to wait more than 20 seconds to start (leaving 10 of its 30 seconds for the request) fails at once with `quota` instead of waiting, so routing moves on. After a bot check the provider stops sending requests for 30 minutes, doubling up to 2 hours while the check is still there, and fails at once with `quota` during that pause. That pause is shared with every Pi process using the same config directory, such as parallel subagents, through a small `duckduckgo-cooldown.json` file next to `web-search.json`; the spacing and the 10-search budget are counted per process. Running out of time during a request is a `network` error, not an abort.
+
+Set `firecrawlBaseUrl` or `FIRECRAWL_BASE_URL` to use Firecrawl for `web_search` and as an extraction fallback for `fetch_content`. Search calls `/v2/search` by default, requests `sources: ["web"]`, maps `numResults` to `limit`, maps `recencyFilter` to Firecrawl's `tbs`, and maps domain filters to `includeDomains` or `excludeDomains` when possible. With `includeContent: true`, Firecrawl search adds Markdown scrape options and returns successful result Markdown as inline content. Fetch extraction calls `/v2/scrape` by default. Set `firecrawlApiVersion` or `FIRECRAWL_API_VERSION` to `v1` for older self-hosted images. Firecrawl bills PDFs per parsed page; set `firecrawlPdfMaxPages` to a positive integer to have Firecrawl parse at most that many pages of each PDF in fetch extraction and `includeContent` search. It is a per-document cap, not a credit budget: several PDFs or repeated requests still add up. Unset keeps the current behavior, and API `v1` does not support the cap, so setting it with `v1` is a config error. When Firecrawl reports fewer parsed pages than the PDF has, the content ends with a truncation notice naming both page counts. Firecrawl page scraping is cache-only by default (`lockdown: true`), so the Firecrawl server does not make fresh outbound target requests unless you explicitly set `firecrawlFreshScrape: true` or `FIRECRAWL_FRESH_SCRAPE=1`. Enable fresh scraping only for a Firecrawl deployment whose own egress, redirects, DNS rebinding behavior, and internal-network access are isolated or allowlisted; this extension can preflight submitted fetch URLs but cannot control network requests made by the Firecrawl server. A configured Firecrawl API base URL may use `localhost`, `127.0.0.0/8`, or `::1` without adding those loopback ranges to global `ssrf.allowRanges`; that exception is only for Firecrawl API calls, not submitted fetch/search target URLs. The configured Firecrawl API base URL and redirects are otherwise still validated by the same SSRF guard as other remote requests, and Firecrawl credentials are stripped from cross-origin API redirects.
 
 **Crawl4AI.** Set `crawl4aiBaseUrl` or `CRAWL4AI_BASE_URL` to use a self-hosted [Crawl4AI](https://github.com/unclecode/crawl4ai) server as a `fetch_content` extraction fallback. It runs right after Firecrawl and before the hosted providers, and it never participates in `web_search` because Crawl4AI has no search API. Extraction calls `POST /md` with the `fit` markdown filter and returns the response's top-level `markdown`; the first `# ` heading becomes the title. Crawl4AI 0.9 and later require a bearer token by default, so set `crawl4aiApiToken` (credential-source syntax applies) or `CRAWL4AI_API_TOKEN`. The submitted target URL is validated by the local SSRF guard before any request, but the Crawl4AI server then fetches that target from its own network, so leave the base URL unset for URLs that must not be disclosed to that server. A configured Crawl4AI base URL may use `localhost`, `127.0.0.0/8`, or `::1` without adding those ranges to global `ssrf.allowRanges`; a base URL on another private or synthetic range needs a narrow `ssrf.allowRanges` entry. The base URL and its redirects are otherwise validated like other remote requests, and the bearer token is stripped from cross-origin API redirects.
 
@@ -629,6 +828,14 @@ Bright Data Web Unlocker is a paid `fetch_content` fallback after Parallel and b
 
 **Valyu.** Set `valyuApiKey` or `VALYU_API_KEY` and select `provider: "valyu"` to query Valyu's research search API. Valyu is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. Returned page bodies provide result snippets and optional inline content, capped at 2,500 and 4,000 characters per result.
 
+**Keenable.** Select `provider: "keenable"` to query Keenable's web search API. No API key is needed: without one, requests go to Keenable's public endpoint, which is rate-limited per IP. Set `keenableApiKey` or `KEENABLE_API_KEY` to use the authenticated endpoint and its higher limits. Keenable is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. A single allowed domain is sent as Keenable's `site` filter; several domains and exclusions become `site:` / `-site:` clauses in the query, and all domain filters are reapplied locally. Recency maps to a `published_after` date. Result snippets are capped at 500 characters.
+
+**Ceramic.** Set `ceramicApiKey` or `CERAMIC_API_KEY` ([get a key](https://platform.ceramic.ai/keys)) and select `provider: "ceramic"` to query [Ceramic](https://www.ceramic.ai)'s web search API, a paid keyword search index with free starter credits. Ceramic is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. Ceramic matches keywords rather than questions, so short keyword queries work best. Allowed domains become `site:` clauses in the query; excluded domains are only removed from the returned results, because Ceramic documents no exclusion syntax, so a search with exclusions can return fewer results than requested. `recencyFilter` is unsupported and is not sent, because Ceramic has no date filter. Result snippets are capped at 500 characters.
+
+**Cloudflare.** Select `provider: "cloudflare"` to search through the [Cloudflare Web Search API](https://developers.cloudflare.com/web-search/), which runs the query on Ceramic, Exa, or Linkup through an AI Gateway and bills it to your AI Gateway credits at each provider's list price, or to a provider key stored on the gateway. Set `cloudflareAccountId` or `CLOUDFLARE_ACCOUNT_ID`, and `cloudflareApiKey` or `CLOUDFLARE_API_KEY` to an API token with **Workers AI Read** and **AI Gateway Read**. These are the same environment variables Pi's Cloudflare provider reads; a key saved with Pi's `/login` is not used here. `cloudflareSearchProvider` (or `CLOUDFLARE_SEARCH_PROVIDER`) picks `"ceramic"` (default), `"exa"`, or `"linkup"`, and `cloudflareGatewayId` (or `CLOUDFLARE_GATEWAY_ID`) picks the gateway (default `"default"`). Cloudflare is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The API returns at most 10 results and has no domain or date filters: with Ceramic, allowed domains become `site:` clauses in the query; for every provider, domain filters are applied to the returned results, so a filtered search can return fewer results than requested. `recencyFilter` is not sent. Result snippets are capped at 500 characters.
+
+**DeepSeek.** Set `deepseekApiKey` or `DEEPSEEK_API_KEY` ([get a key](https://platform.deepseek.com/api_keys)) and select `provider: "deepseek"` to query DeepSeek's [Search API](https://api-docs.deepseek.com/guides/search), which is billed per successful request. DeepSeek is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. Allowed domains become `site:` clauses, excluded domains become `-site:` clauses, and `recencyFilter` becomes an `after:` date in the query. DeepSeek accepts at most 128 characters per query including those clauses, so a longer query fails before any request is sent. Each result's snippet is DeepSeek's model-oriented `summary`, capped at 800 characters. With `includeContent: true`, the request sets `need_content: true` and DeepSeek's native page content is returned as inline content, so pages the provider already fetched are not fetched again; this does not change the per-request price. DeepSeek Fetch is also available as an opt-in `fetch_content` provider: add `deepseek` to `fetchRouting.providers` (it is not in the default fetch order) and set `fetchRouting.allowRemoteHostedProviders` to `true`. It calls `POST https://api.deepseek.com/v1/tools/fetch` and returns the page as Markdown, sharing `deepseekApiKey`/`DEEPSEEK_API_KEY` with search. The target URL is validated locally before the API request, and the key is stripped from cross-origin API redirects. DeepSeek bills each successful Fetch, and `auto`/`all` never select it.
+
 **Serper.** Set `serperApiKey` or `SERPER_API_KEY` and select `provider: "serper"` to query Serper's Google Search API. Serper is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`.
 
 **Tavily key pool.** Set `TAVILY_API_KEY_1` through `TAVILY_API_KEY_20` to try another key when Tavily returns HTTP 401, 402, 403, 429, or 432. `TAVILY_API_KEY_INDEX` picks the first slot to try (default `1`). Search tries each distinct numbered key once, wrapping around, then tries `tavilyApiKey` / `TAVILY_API_KEY`. Explicit `$VAR` and `!command` sources still fail closed. All attempts share the 60-second search deadline.
@@ -641,14 +848,49 @@ The Baizhi input contract is based on the [published September 16 discovery snap
 
 **Serply.** Set `serplyApiKey` or `SERPLY_API_KEY` and select `provider: "serply"` to query [Serply](https://serply.io)'s Google Search API. Serply is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent in the `X-Api-Key` request header. Domain filters are sent as Google `site:` clauses and reapplied locally; recency maps to Google's `tbs` time filter. Each request consumes Serply search credits; see the [API documentation](https://serply.io/docs).
 
+**SearchApi.** Set `searchapiApiKey` or `SEARCHAPI_API_KEY` and select `provider: "searchapi"` to query [SearchApi](https://www.searchapi.io)'s Google Search API. SearchApi is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent as a `Bearer` token in the `Authorization` request header, never in the URL. Domain filters are sent as Google `site:` clauses and reapplied locally; recency maps to SearchApi's `time_period` filter (`last_day`, `last_week`, `last_month`, `last_year`). Each request fetches one Google results page and consumes SearchApi search credits, so a search returns at most 10 results even when `numResults` asks for more; results are trimmed to `numResults` locally. See the [API documentation](https://www.searchapi.io/docs/google).
+
+**Outcrawl.** Set `outcrawlApiKey` or `OUTCRAWL_API_KEY` and select `provider: "outcrawl"` to query the [Outcrawl](https://outcrawl.ai) Search API. Outcrawl is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent as a `Bearer` token in the `Authorization` request header, never in the URL. Domain filters are sent as `site:` clauses and reapplied locally, with a few extra results requested so filtering still fills `numResults`; Outcrawl has no date filter, so `recencyFilter` is not applied. Each search returns at most 20 results and uses Outcrawl credits; there is a free tier of 1,000 credits a month. See the [API documentation](https://outcrawl.ai/docs).
+
+**Sofya.** Set `sofyaApiKey` or `SOFYA_API_KEY` and select `provider: "sofya"` to query the [Sofya](https://sofya.co) Search API. Sofya is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent as a `Bearer` token in the `Authorization` request header, never in the URL. Domain filters are sent as Sofya's `include_domains` and `exclude_domains` (up to 10 each) and reapplied locally; recency maps to its `freshness` filter (`day`, `week`, `month`, `year`). Searches use the `snippets` depth (title, URL and snippet, 1 credit each) and return at most 20 results. Sofya is pay as you go, and GitHub accounts a year or older get free monthly credits. See the [API documentation](https://sofya.co/docs).
+
+**cloro.** Set `cloroApiKey` or `CLORO_API_KEY` and select `provider: "cloro"` to query Google Search through [cloro](https://cloro.dev). cloro is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent as a `Bearer` token in the `Authorization` request header, never in the URL. Each search sends `POST /v1/monitor/google` with `country: "US"` and returns one Google results page, so a search returns at most about 10 results; results are trimmed to `numResults` locally. Domain filters are sent as Google `site:` clauses and reapplied locally. The request has no date filter, so `recencyFilter` is not applied. Set `cloroMode` to `"aimode"` to send the query to Google AI Mode (`POST /v1/monitor/aimode`) instead: the AI Mode answer becomes the answer (as Markdown, requested with `include.markdown`, which costs no extra credits) and its sources become the results, filtered locally by the domain filters. Set `cloroMode` to `"bing_aimode"` to send the query to Bing AI Mode (`POST /v1/monitor/bing/aimode`) in the same way. Bing puts the prompt in the page URL, so a Bing AI Mode query can have a maximum of 3,500 characters after URL encoding, and fewer for non-Latin scripts. A Google Search call costs 5 credits, and a Google AI Mode or Bing AI Mode call costs 6 credits (the base cost plus 2 credits for a synchronous request). Get a key at [dashboard.cloro.dev](https://dashboard.cloro.dev/api-keys). See the [API documentation](https://cloro.dev/docs/api-reference/endpoint/monitor-google).
+
+**Autom.** Set `automApiKey` or `AUTOM_API_KEY` and select `provider: "autom"` to query Google Search through [Autom](https://www.autom.dev). Autom is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent in the `x-api-key` request header, never in the URL. Each search sends `GET /v1/google/search` and returns one Google results page, so a search returns at most about 10 results; results are trimmed to `numResults` locally. Domain filters are sent as Google `site:` clauses and reapplied locally, and `recencyFilter` is sent as Google's `tbs` (`qdr:d`, `qdr:w`, `qdr:m` or `qdr:y`). Each request uses one Autom credit.
+**SpecStream.** Set `specstreamApiKey` or `SPECSTREAM_API_KEY` and select `provider: "specstream"` to search the live web through the [SpecStream Search API](https://specstream.ai). SpecStream is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent as a `Bearer` token in the `Authorization` request header, never in the URL. Each search sends `GET /v1/web-search` and returns the sources with title, URL and snippet. The request has no domain or date parameters, so `numResults` and domain filters are applied locally and `recencyFilter` is not applied. For `fetch_content`, add `"specstream"` to `fetchRouting.providers` to read a page as Markdown through the SpecStream Extract API (`POST /v1/extract`). Like the other hosted fetchers, it is used for remote targets only when `fetchRouting.allowRemoteHostedProviders` is on, and it is not in the default fetch order. Search costs $5 per 1,000 calls and Extract costs $0.80 per 1,000 pages. Get a key in the [SpecStream workspace](https://specstream.ai).
+
 **You.com.** Set `youApiKey` or `YDC_API_KEY` and select `provider: "you"` to query the [You.com Web Search API](https://you.com/docs/guides/search). You.com is explicit-only: it is never chosen by `auto` or `provider: "all"`, but it can be configured as the named provider or added to `searchRouting`. The key is sent in the `X-API-Key` request header. Domain filters map to `include_domains` and `exclude_domains`, and recency maps to `freshness`. Each request consumes You.com API credits.
 
 **Parallel MCP.** Select `provider: "parallel-mcp"` to use Parallel Search MCP without an API key, or add it to `searchRouting`. It is explicit-only and is never chosen by `auto` or `provider: "all"`; the existing `parallel` provider remains the key-required REST API. A configured `parallelApiKey` or `PARALLEL_API_KEY` is sent as an optional Bearer token for higher MCP limits. To use MCP `web_fetch`, add `parallel-mcp` to `fetchRouting.providers` and set `fetchRouting.allowRemoteHostedProviders` to `true`; it is not part of the default fetch route.
 
-Without an explicit `$` or `!` source, `OPENAI_API_KEY`, `BRAVE_API_KEY`, `PARALLEL_API_KEY`, `TINYFISH_API_KEY`, `SEARCH1API_KEY`, `SEARCHINFINITY_API_KEY`, `QUERIT_API_KEY`, `TAVILY_API_KEY`, `YDC_API_KEY`, `JINA_API_KEY`, `SERPDIVE_API_KEY`, `KAGI_API_KEY`, `BOCHA_API_KEY`, `OLLAMA_API_KEY`, `SERPBASE_API_KEY`, `SERPAPI_KEY`, `SERPER_API_KEY`, `SERPLY_API_KEY`, `BAIZHI_API_KEY`, `ZAI_API_KEY`, `ANYSEARCH_API_KEY`, `XCRAWL_API_KEY`, `VALYU_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `BRIGHTDATA_API_KEY`, `FIRECRAWL_API_KEY`, `CRAWL4AI_API_TOKEN`, `EXA_API_KEY`, `GEMINI_API_KEY`, `DATALAB_API_KEY`, `DATALAB_PROCESSING_LOCATION`, `DATALAB_MODE`, `DATALAB_API_BASE`, `PERPLEXITY_API_KEY`, `GOOGLE_GEMINI_BASE_URL`, and `CLOUDFLARE_API_KEY` env vars retain their existing precedence over literal config file values. `openaiResponsesUrl` can point OpenAI `web_search` and `source_check` at a third-party gateway that supports the OpenAI Responses API and web search tool; it is an explicit endpoint override, not derived from Pi model provider settings, and defaults to `https://api.openai.com/v1/responses`. `openaiSearchModel` pins the model id used for OpenAI `web_search`, bypassing automatic selection (newest terra-tier model, then newest bare `gpt-N` or `gpt-N.N` id, then newest other `gpt-<version>` id); the id is sent verbatim with whichever OpenAI auth resolves, so gateway-only model ids work too. `xaiSearchModel` similarly pins the xAI search model. `openaiSearchProviders` sets which Pi model providers OpenAI `web_search` resolves login credentials from, in priority order; it defaults to `["openai-codex", "openai"]`, entries that are not registered or not signed in are skipped, and an empty array skips Pi credentials entirely so the `openaiApiKey` / `OPENAI_API_KEY` fallback applies. Useful for choosing between multiple Codex accounts (for example a second account registered by an extension) or forcing API-key billing while signed into Codex. Configured Exa API keys use Exa's own account limits directly; any legacy local `exa-usage.json` file is ignored. `GOOGLE_GEMINI_BASE_URL` overrides the Gemini API host for Gemini generate-content calls such as search, URL context, YouTube, and local video analysis. Set it to a bare host with no trailing slash and no version segment, for example `https://my-gateway.example.com/gemini`; `geminiBaseUrl` is the config-file equivalent. When the configured host contains `gateway.ai.cloudflare.com`, authentication uses `cf-aig-authorization: Bearer <token>` from `CLOUDFLARE_API_KEY` or `cloudflareApiKey`, and `GEMINI_API_KEY` is not required for generate-content calls. Alternatively, set `geminiAuth` to `"adc"` to authenticate Gemini generate-content calls with Google Application Default Credentials (ADC) instead of an API key; calls go to the Vertex AI endpoint (`aiplatform.googleapis.com`) with an OAuth bearer token minted from the ADC file (`GOOGLE_APPLICATION_CREDENTIALS` or `~/.config/gcloud/application_default_credentials.json`, i.e. `gcloud auth application-default login`). `geminiProject`/`geminiLocation` set the Vertex project and location and fall back to the `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION` (or `GCLOUD_PROJECT`) env vars; project and location are required. ADC supports `authorized_user` (OAuth refresh token) and `service_account` (JWT assertion) credential files, and tokens are cached and refreshed from expiry. ADC mode covers search, URL context, and PDF/inline-data extraction; YouTube and local video analysis still go through the Gemini Files API, so they fall back to Gemini Web unless a `GEMINI_API_KEY` is also configured. The access token is treated as a credential and is redacted from errors. Local video file upload still uses Google's Files API directly, so gateway-only video extraction falls back to Gemini Web unless a `GEMINI_API_KEY` is also configured. `provider` or `searchProvider` sets the default search provider and is used when a tool call omits `provider` or sends `"auto"`: `"all"`, `"openai"`, `"brave"`, `"parallel"`, `"parallel-mcp"`, `"tinyfish"`, `"search1api"`, `"searchinfinity"`, `"querit"`, `"tavily"`, `"firecrawl"`, `"jina"`, `"serpdive"`, `"kagi"`, `"bocha"`, `"ollama"`, `"anysearch"`, `"xcrawl"`, `"valyu"`, `"xai"`, `"mistral"`, `"brightdata"`, `"serpbase"`, `"serpapi"`, `"serper"`, `"serply"`, `"you"`, `"baizhi"`, `"zai"`, `"searxng"`, `"exa"`, `"perplexity"`, or `"gemini"`. Parallel MCP, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data, SerpBase, SerpApi, Serper, Serply, You.com, Baizhi, and Z.ai are never selected by `auto`; choose them explicitly or place them in `searchRouting`. If either single-provider field is configured, it takes precedence over `searchRouting`. Otherwise, `searchRouting` can opt into an ordered `providers` list and an explicit `fallbackOn` list containing `"transient"`, `"quota"`, `"network"`, and/or `"invalid-response"`; only those typed failures continue to the next available candidate. `"all"` is not valid inside `searchRouting.providers`, because that list defines sequential fallback rather than multi-provider aggregation. Named providers remain strict, and exhausted routes return per-provider diagnostics. `provider` can also be a non-empty array of named providers such as `["brave", "exa"]`; those providers run concurrently using the same aggregation path as `"all"`, while `"auto"` and `"all"` are invalid inside arrays. Random, weighted, sticky, and cooldown routing are not enabled. This is also updated automatically when you change the provider in the curator UI. Set `webSearch.enabled` to `false` to unregister the configured search and source-check tools while leaving fetch/content tools available. `toolNames` can opt into alternate public tool names for environments where another extension or model reserves the defaults, without changing behavior: `webSearch`, `sourceCheck`, `fetchContent`, and `getSearchContent` default to `web_search`, `source_check`, `fetch_content`, and `get_search_content`. `workflow` sets the default search workflow: `"none"` (default; raw results, no curator), `"summary-review"` (opens curator with an auto-generated summary draft), or `"auto-summary"` (returns a model-generated summary without opening the browser curator). Overridden per-call via the `workflow` parameter on the configured search tool, or toggled at runtime with `/curator`. `browserCookies.profile` pins Gemini Web cookie lookup to a specific Chromium profile. When omitted, detected Chromium profiles are scanned in stable order and the first profile containing the required Gemini cookies is used. macOS discovery supports Helium, Chrome, Brave, and Arc; Linux discovery supports Chromium and Chrome. `allowBrowserCookies` enables Chromium cookie extraction for Gemini Web; it defaults to `false` to avoid browser data access and surprise macOS Keychain prompts. You can also set `PI_ALLOW_BROWSER_COOKIES=1`. Cookie databases are copied to a temporary read-only working copy; the reader uses `node:sqlite` when available and otherwise tries the `sqlite3` CLI or Python's standard-library SQLite module. `searchModel` overrides the Gemini API model used by the configured search tool without changing URL, YouTube, or video extraction defaults. Gemini API grounded search uses `gemini-3.6-flash` by default; set `searchModel` to choose another model. Gemini Web browser-cookie fallback uses its separate `gemini-3.1-pro` default because Gemini Web relies on private header values; explicitly configured unsupported Web models fail instead of silently falling back to 2.5 Flash. `summaryModel` sets the default model used for generating summary drafts in the curator UI and `auto-summary` mode (e.g. `"anthropic/claude-haiku-4-5"`, `"openai-codex/gpt-5.3-codex-spark"`, or `"openrouter/nvidia/nemotron-3-super-120b-a12b:free"`). Preferred summary and query-rewrite models also resolve through routed provider registrations such as OpenRouter when the native provider is unavailable. When Pi `enabledModels` is configured, summaries are limited to that allowlist; if no enabled summary model is available, the tool returns a deterministic summary instead of calling an unrelated model. `summaryGenerationDeadlineMs` sets the maximum time for one summary model attempt in the curator UI and `auto-summary` mode. It defaults to `30000`, must be a positive integer, and is capped at `600000`. `maxInlineContentChars` sets the direct `fetch_content` content slice and the default and maximum `get_search_content` slice. It defaults to `30000`, must be a positive integer, and is capped at `200000`; full fetched content remains stored for later retrieval. `curatorTimeoutSeconds` controls the initial curator idle timeout (default `20`, max `600`); users can still adjust the timer in the curator UI. `ssrf.allowRanges` lists CIDR ranges (e.g. `"198.18.0.0/15"`, `"fd00::/8"`) exempted from the SSRF guard that otherwise blocks private/reserved IP ranges. This unblocks `fetch_content`/`web_search` on hosts whose network proxy runs in TUN + fake-IP mode (Surge, Clash, Mihomo, Stash, ...), where public domains resolve into a synthetic reserved range. It is **off by default** — the guard stays fully enabled unless you list ranges here. Use the narrowest range that covers your proxy's fake-IP pool. All-address CIDRs such as `0.0.0.0/0` and `::/0` are rejected. `ssrf.trustEnvProxy` is a separate opt-in for networks where only the proxy can resolve hostnames; it skips local DNS preflight only for hostnames sent through the configured `proxy` or, when none is configured, hostnames covered by valid HTTP(S) proxy env vars in sandboxes that route through them, and still blocks localhost, literal private IP targets, and `NO_PROXY` matches. It does not configure proxy transport.
+Without an explicit `$` or `!` source, `OPENAI_API_KEY`, `BRAVE_API_KEY`, `PARALLEL_API_KEY`, `TINYFISH_API_KEY`, `SEARCH1API_KEY`, `SEARCHINFINITY_API_KEY`, `QUERIT_API_KEY`, `TAVILY_API_KEY`, `TABSTACK_API_KEY`, `YDC_API_KEY`, `JINA_API_KEY`, `SERPDIVE_API_KEY`, `KAGI_API_KEY`, `BOCHA_API_KEY`, `OLLAMA_API_KEY`, `SERPBASE_API_KEY`, `SERPAPI_KEY`, `SERPER_API_KEY`, `SERPLY_API_KEY`, `SEARCHAPI_API_KEY`, `OUTCRAWL_API_KEY`, `SOFYA_API_KEY`, `CLORO_API_KEY`, `AUTOM_API_KEY`, `SPECSTREAM_API_KEY`, `BAIZHI_API_KEY`, `ZAI_API_KEY`, `KEENABLE_API_KEY`, `CERAMIC_API_KEY`, `DEEPSEEK_API_KEY`, `LINKUP_API_KEY`, `NINEROUTER_API_KEY`, `ANYSEARCH_API_KEY`, `XCRAWL_API_KEY`, `VALYU_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `BRIGHTDATA_API_KEY`, `FIRECRAWL_API_KEY`, `CRAWL4AI_API_TOKEN`, `DEGOOG_API_KEY`, `EXA_API_KEY`, `GEMINI_API_KEY`, `DATALAB_API_KEY`, `DATALAB_PROCESSING_LOCATION`, `DATALAB_MODE`, `DATALAB_API_BASE`, `PERPLEXITY_API_KEY`, `GOOGLE_GEMINI_BASE_URL`, and `CLOUDFLARE_API_KEY` env vars retain their existing precedence over literal config file values. `openaiResponsesUrl` can point OpenAI `web_search` and `source_check` at a third-party gateway that supports the OpenAI Responses API and web search tool; it is an explicit endpoint override, not derived from Pi model provider settings, and defaults to `https://api.openai.com/v1/responses`. `openaiSearchModel` pins the model id used for OpenAI `web_search`, bypassing automatic selection (newest Luna model, then newest bare `gpt-N` or `gpt-N.N` id, then newest other `gpt-<version>` id; `gpt-6-luna` when only an API key is configured); the id is sent verbatim with whichever OpenAI auth resolves, so gateway-only model ids work too. `xaiSearchModel` similarly pins the xAI search model. `openaiSearchProviders` sets which Pi model providers OpenAI `web_search` resolves login credentials from, in priority order; it defaults to `["openai-codex", "openai"]`, entries that are not registered or not signed in are skipped, and an empty array skips Pi credentials entirely so the `openaiApiKey` / `OPENAI_API_KEY` fallback applies. Useful for choosing between multiple Codex accounts (for example a second account registered by an extension) or forcing API-key billing while signed into Codex. Configured Exa API keys use Exa's own account limits directly; any legacy local `exa-usage.json` file is ignored. `GOOGLE_GEMINI_BASE_URL` overrides the Gemini API host for Gemini generate-content calls such as search, URL context, YouTube, and local video analysis. Set it to a bare host with no trailing slash and no version segment, for example `https://my-gateway.example.com/gemini`; `geminiBaseUrl` is the config-file equivalent. When the configured host contains `gateway.ai.cloudflare.com`, authentication uses `cf-aig-authorization: Bearer <token>` from `CLOUDFLARE_API_KEY` or `cloudflareApiKey`, and `GEMINI_API_KEY` is not required for generate-content calls. Alternatively, set `geminiAuth` to `"adc"` to authenticate Gemini generate-content calls with Google Application Default Credentials (ADC) instead of an API key; calls go to the Vertex AI endpoint (`aiplatform.googleapis.com`) with an OAuth bearer token minted from the ADC file (`GOOGLE_APPLICATION_CREDENTIALS` or `~/.config/gcloud/application_default_credentials.json`, i.e. `gcloud auth application-default login`) or, on Compute Engine, from the metadata server. `geminiProject`/`geminiLocation` set the Vertex project and location and fall back to the `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION` (or `GCLOUD_PROJECT`) env vars; project and location are required. ADC supports `authorized_user` (OAuth refresh token) and `service_account` (JWT assertion) credential files, and when neither `GOOGLE_APPLICATION_CREDENTIALS` nor `~/.config/gcloud/application_default_credentials.json` exists and Pi runs on Google Compute Engine, ADC uses the attached service account token from the GCE metadata server (`GCE_METADATA_HOST` overrides the host; `METADATA_SERVER_DETECTION=none` disables it); tokens are cached and refreshed from expiry. ADC mode covers search, URL context, and PDF/inline-data extraction; YouTube and local video analysis still go through the Gemini Files API, so they fall back to Gemini Web unless a `GEMINI_API_KEY` is also configured. The access token is treated as a credential and is redacted from errors. Local video file upload still uses Google's Files API directly, so gateway-only video extraction falls back to Gemini Web unless a `GEMINI_API_KEY` is also configured. `provider` or `searchProvider` sets the default search provider and is used when a tool call omits `provider` or sends `"auto"`: `"all"`, `"openai"`, `"brave"`, `"parallel"`, `"parallel-mcp"`, `"tinyfish"`, `"search1api"`, `"searchinfinity"`, `"querit"`, `"tavily"`, `"firecrawl"`, `"jina"`, `"serpdive"`, `"kagi"`, `"bocha"`, `"ollama"`, `"anysearch"`, `"xcrawl"`, `"valyu"`, `"xai"`, `"mistral"`, `"brightdata"`, `"serpbase"`, `"serpapi"`, `"serper"`, `"serply"`, `"searchapi"`, `"outcrawl"`, `"sofya"`, `"cloro"`, `"autom"`, `"specstream"`, `"you"`, `"baizhi"`, `"zai"`, `"keenable"`, `"ceramic"`, `"deepseek"`, `"ninerouter"`, `"cloudflare"`, `"tabstack"`, `"searxng"`, `"degoog"`, `"exa"`, `"perplexity"`, or `"gemini"`. Parallel MCP, degoog, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data, SerpBase, SerpApi, Serper, Serply, You.com, Baizhi, Z.ai, Keenable, Ceramic, DeepSeek, Linkup, 9router, Cloudflare, SearchApi, Outcrawl, Sofya, cloro, Autom, SpecStream, and Tabstack are never selected by `auto`; choose them explicitly or place them in `searchRouting`. If either single-provider field is configured, it takes precedence over `searchRouting`. Otherwise, `searchRouting` can opt into an ordered `providers` list and an explicit `fallbackOn` list containing `"transient"`, `"quota"`, `"network"`, and/or `"invalid-response"`; only those typed failures continue to the next available candidate. `fallbackOn` may also list `"empty"` (a successful response with no results and no answer) and `"domain-miss"` (no result on a requested include domain; an empty response also counts when an include domain was requested), so a route moves on from a successful but unusable response; if every candidate is weak, the first weak response is returned instead of an error. Both are off unless listed. `searchRouting.timeoutMs` (integer, 1 to 600000) optionally caps one routed search across all candidates, including each candidate's availability check and credential or browser-cookie lookup: when it elapses the in-flight request is aborted, later candidates are not tried, and the first weak response or the exhausted-route diagnostics (with `routing timeout after <N>ms`) are returned. Cancelling the search yourself is still reported as a cancellation, and a named provider is never affected. `"all"` is not valid inside `searchRouting.providers`, because that list defines sequential fallback rather than multi-provider aggregation. Named providers remain strict, and exhausted routes return per-provider diagnostics. `provider` can also be a non-empty array of named providers such as `["brave", "exa"]`; those providers run concurrently using the same aggregation path as `"all"`, while `"auto"` and `"all"` are invalid inside arrays. When every provider in a default array fails and each failure is a `fallbackOn` type, the search continues through the `searchRouting` providers the array did not try; a list given in a tool call (`"brave,exa"` from Pi, or an array over MCP) stays strict. Random, weighted, sticky, and cooldown routing are not enabled. This is also updated automatically when you change the provider in the curator UI. Set `webSearch.enabled` to `false` to unregister the configured search and source-check tools while leaving fetch/content tools available. `toolNames` can opt into alternate public tool names for environments where another extension or model reserves the defaults, without changing behavior: `webSearch`, `sourceCheck`, `fetchContent`, and `getSearchContent` default to `web_search`, `source_check`, `fetch_content`, and `get_search_content`. `workflow` sets the default search workflow: `"none"` (default; raw results, no curator), `"summary-review"` (opens curator with an auto-generated summary draft), or `"auto-summary"` (returns a model-generated summary without opening the browser curator). Overridden per-call via the `workflow` parameter on the configured search tool, or toggled at runtime with `/curator`. `browserCookies.profile` pins Gemini Web cookie lookup to a specific Chromium profile. When omitted, detected Chromium profiles are scanned in stable order and the first profile containing the required Gemini cookies is used. macOS discovery supports Helium, Chrome, Brave, and Arc; Linux discovery supports Chromium and Chrome. `allowBrowserCookies` enables Chromium cookie extraction for Gemini Web; it defaults to `false` to avoid browser data access and surprise macOS Keychain prompts. You can also set `PI_ALLOW_BROWSER_COOKIES=1`. Cookie databases are copied to a temporary read-only working copy; the reader uses `node:sqlite` when available and otherwise tries the `sqlite3` CLI or Python's standard-library SQLite module. `searchModel` overrides the Gemini API model used by the configured search tool without changing URL, YouTube, or video extraction defaults. Gemini API grounded search uses `gemini-3.6-flash` by default; set `searchModel` to choose another model. Gemini Web browser-cookie fallback uses its separate `gemini-3.1-pro` default because Gemini Web relies on private header values; explicitly configured unsupported Web models fail instead of silently falling back to 2.5 Flash. `summaryModel` sets the default model used for generating summary drafts in the curator UI and `auto-summary` mode (e.g. `"anthropic/claude-haiku-4-5"`, `"openai-codex/gpt-5.3-codex-spark"`, or `"openrouter/nvidia/nemotron-3-super-120b-a12b:free"`). Preferred summary and query-rewrite models also resolve through routed provider registrations such as OpenRouter when the native provider is unavailable. When Pi `enabledModels` is configured, summaries are limited to that allowlist; if no enabled summary model is available, the tool returns a deterministic summary instead of calling an unrelated model. `summaryGenerationDeadlineMs` sets the maximum time for one summary model attempt in the curator UI and `auto-summary` mode. It defaults to `30000`, must be a positive integer, and is capped at `600000`. `maxInlineContentChars` sets the direct `fetch_content` content slice and the default and maximum `get_search_content` slice. It defaults to `30000`, must be a positive integer, and is capped at `200000`; full fetched content remains stored for later retrieval. `curatorTimeoutSeconds` controls the initial curator idle timeout (default `20`, max `600`); users can still adjust the timer in the curator UI. `ssrf.allowRanges` lists CIDR ranges (e.g. `"198.18.0.0/15"`, `"fd00::/8"`) exempted from the SSRF guard that otherwise blocks private/reserved IP ranges. This unblocks `fetch_content`/`web_search` on hosts whose network proxy runs in TUN + fake-IP mode (Surge, Clash, Mihomo, Stash, ...), where public domains resolve into a synthetic reserved range. It is **off by default** — the guard stays fully enabled unless you list ranges here. Use the narrowest range that covers your proxy's fake-IP pool. All-address CIDRs such as `0.0.0.0/0` and `::/0` are rejected. `ssrf.trustEnvProxy` is a separate opt-in for networks where only the proxy can resolve hostnames; it skips local DNS preflight only for hostnames sent through the configured `proxy` or, when none is configured, hostnames covered by valid HTTP(S) proxy env vars in sandboxes that route through them, and still blocks localhost, literal private IP targets, and `NO_PROXY` matches. It does not configure proxy transport.
+
+`searchRouting.fallbackOn` can also list `"off-topic"` to move on when a provider's answer and results have nothing to do with the query, as judged by the classifier model named in `searchRouting.offTopicModel` (`"cloudflare-workers-ai/@cf/cloudflare/clef"`, `"typesafe/jev-latest"`, or `"cloudflare-workers-ai/typesafe/jev-1.14.0"`, with Pi's credentials for that provider); the query, answer and result snippets are sent to that provider on every routed search that returns something. If the check fails, the response is kept. It works only in Pi, not over MCP. [docs/offtopic-judge.md](docs/offtopic-judge.md) has the measurements.
+
+### 9router
+
+Select `provider: "ninerouter"` to search through a self-hosted [9router](https://github.com/decolua/9router), which fronts many search APIs behind one `/v1/search` endpoint. Set `ninerouterBaseUrl` (or `NINEROUTER_BASE_URL`) to the router's `/v1` root; `ninerouterApiKey` (or `NINEROUTER_API_KEY`) is optional, and `ninerouterProvider` (or `NINEROUTER_SEARCH_PROVIDER`) picks the router-side provider or combo (default `"serper"`). It is explicit-only: never chosen by `auto` or `all`.
+
+### Linkup
+
+Set `linkupApiKey` or `LINKUP_API_KEY` ([get a key](https://app.linkup.so)) and select `provider: "linkup"` to use [Linkup Search](https://docs.linkup.so/pages/documentation/endpoints/search/reference). Linkup requires explicit selection because searches consume account credits. It is excluded from the built-in `auto` chain and `provider: "all"`, but supports configured defaults, provider arrays, and `searchRouting.providers`.
+
+```json
+{
+  "linkupApiKey": "$LINKUP_API_KEY",
+  "linkupDepth": "fast"
+}
+```
+
+`linkupDepth` sets the search depth. It defaults to `"fast"`, which Linkup recommends for most agent applications. It also accepts `"flash"` (alpha, lowest latency), `"standard"` (one search iteration), and `"deep"` (multiple search iterations). Invalid values fail before a request is sent. Depth affects latency and credit usage. Reload Pi after changing the configuration.
+
+Requests use `outputType: "searchResults"` and do not request a generated answer, structured output, or images. `numResults` maps to `maxResults`, and `recencyFilter` maps to `fromDate` using 1, 7, 30, or 365 days. Domain filters map to `includeDomains` and `excludeDomains` and are reapplied locally. Each domain list is limited to 100 entries.
+
+Text results become source links with snippets capped at 500 characters. With `includeContent: true`, text already returned by Linkup is also included as inline content, capped at 4,000 characters per source. No extra Linkup request is made. Requests have a 60-second deadline, including response decoding, and respect caller cancellation. The key uses the same literal, environment, and trusted command sources as other providers.
 
 ### Kimi Code Plan
-Run `/login kimi-coding` in Pi and complete sign-in for an active Kimi Code Plan. Then select `provider: "kimi"`, include `"kimi"` in an explicit provider array, or add it to `searchRouting.providers`. The extension resolves a model with provider `kimi-coding` from Pi's model registry and reuses Pi's refreshed OAuth credential; no Moonshot Open Platform key is configured here.
+
+Run `/login kimi-coding` in Pi and complete sign-in for an active Kimi Code Plan. Then select `provider: "kimi"`, include `kimi` in a provider list such as `"kimi,exa"`, or add it to `searchRouting.providers`. The extension resolves a model with provider `kimi-coding` from Pi's model registry and reuses Pi's refreshed OAuth credential; no Moonshot Open Platform key is configured here.
 
 Kimi search calls `POST https://api.kimi.com/coding/v1/search` with the query as `text_query`. This is the Kimi Code Plan search service, not Moonshot Open Platform `$web_search`. The endpoint exposes no native recency parameter, so `recencyFilter` is unsupported and is not sent. Shared `domainFilter` and `numResults` behavior is enforced locally on the returned `search_results`.
 
@@ -656,7 +898,7 @@ Kimi is explicit-only: it is never chosen by `auto` and never participates in `p
 
 ### All providers
 
-Set `provider: "all"` on `web_search` or `source_check`, or configure `"provider": "all"` as the default, to run the same query against every eligible search provider simultaneously. Parallel MCP, DuckDuckGo, Kimi, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data, SerpBase, SerpApi, Serper, Serply, You.com, Baizhi, and Z.ai are always excluded because they are explicit-only; Bright Data, SerpBase, SerpApi, Serper, Serply, and You.com are paid search APIs, while Baizhi, Z.ai, Kimi, and Mistral may consume account quota or paid search-tool usage, so `all` never spends either resource without an explicit request. Exa remains eligible through its zero-config MCP path, OpenAI can use Pi auth, and other API-backed search providers participate when their API key, local endpoint, or gateway makes them available. Browser-cookie access alone does not opt Gemini into `all`; select Gemini explicitly or configure its API/gateway.
+Set `provider: "all"` on `web_search` or `source_check`, or configure `"provider": "all"` as the default, to run the same query against every eligible search provider simultaneously. Parallel MCP, degoog, DuckDuckGo, Kimi, AnySearch, XCrawl, Valyu, xAI, Mistral, Bright Data, SerpBase, SerpApi, Serper, Serply, You.com, Baizhi, Z.ai, Keenable, Ceramic, DeepSeek, Linkup, 9router, Cloudflare, SearchApi, Outcrawl, Sofya, cloro, Autom, SpecStream, and Tabstack are always excluded because they are explicit-only; Bright Data, SerpBase, SerpApi, Serper, Serply, SearchApi, Outcrawl, Sofya, cloro, Autom, SpecStream, You.com, Ceramic, DeepSeek, Linkup, and Tabstack are paid search APIs, while Baizhi, Z.ai, Kimi, and Mistral may consume account quota or paid search-tool usage, so `all` never spends either resource without an explicit request. Exa remains eligible through its zero-config MCP path, OpenAI can use Pi auth, and other API-backed search providers participate when their API key, local endpoint, or gateway makes them available. Browser-cookie access alone does not opt Gemini into `all`; select Gemini explicitly or configure its API/gateway.
 
 Successful provider answers are preserved separately while source URLs and inline content are deduplicated, and one provider failure does not discard the other results. If every participating provider fails, the tool returns per-provider diagnostics. Configured Firecrawl participates in `all` like other eligible providers. In the Curator, **All** can also be selected like the other provider buttons. Each participating provider gets its own result card, including a provider badge and independent selection checkbox; failed providers get their own disabled error card. The final summary is generated from the selected provider cards and is what Pi receives. Outside the Curator, the same provider answers remain available as labeled sections in one tool response.
 
@@ -671,7 +913,7 @@ Successful provider answers are preserved separately while source URLs and inlin
 }
 ```
 
-Setting `provider` is optional. In `auto` mode, Jina is tried after Firecrawl and before SERPdive. It can also be selected per request with `provider: "jina"`, included in provider arrays or `provider: "all"`, or placed in `searchRouting.providers`.
+Setting `provider` is optional. In `auto` mode, Jina is tried after Firecrawl and before SERPdive. It can also be selected per request with `provider: "jina"`, included in a provider list such as `"jina,exa"` or `provider: "all"`, or placed in `searchRouting.providers`.
 
 Jina Search maps `numResults` to its bounded `count` parameter, sends included domains as `site` filters, and adds excluded domains and recency constraints to the search query. Without `includeContent`, it requests SERP metadata only. With `includeContent: true`, Jina visits matching pages and returns their Markdown inline, so requests can take longer and consume more Jina tokens. The fixed hosted endpoint is `https://s.jina.ai`; no custom endpoint is configured by this extension.
 
@@ -703,7 +945,7 @@ The stable Search (`https://api.search.tinyfish.ai`) and Fetch (`https://api.fet
 }
 ```
 
-Setting `provider` is optional. In `auto` mode, an available Search1API provider is tried after TinyFish and before Searchinfinity. You can also select it per request with `provider: "search1api"`, include it in provider arrays or `provider: "all"`, or place `"search1api"` in `searchRouting.providers`.
+Setting `provider` is optional. In `auto` mode, an available Search1API provider is tried after TinyFish and before Searchinfinity. You can also select it per request with `provider: "search1api"`, include it in a provider list such as `"search1api,exa"` or `provider: "all"`, or place `"search1api"` in `searchRouting.providers`.
 
 Search1API Search supports the shared `numResults`, `recencyFilter`, and include/exclude `domainFilter` options. When `includeContent` is true, it maps to Search1API Deep Search and returns successfully crawled result content inline. The Search1API Crawl endpoint is also used as a hosted `fetch_content` fallback after Jina Reader and TinyFish, before Parallel.
 
@@ -720,7 +962,7 @@ Search1API is credit-based. A basic search costs 1 credit; Deep Search adds 1 cr
 }
 ```
 
-Setting `provider` is optional. In `auto` mode, an available Searchinfinity provider is tried after Search1API and before Querit. You can also select it per request with `provider: "searchinfinity"`, include it in provider arrays or `provider: "all"`, or place `"searchinfinity"` in `searchRouting.providers`.
+Setting `provider` is optional. In `auto` mode, an available Searchinfinity provider is tried after Search1API and before Querit. You can also select it per request with `provider: "searchinfinity"`, include it in a provider list such as `"searchinfinity,exa"` or `provider: "all"`, or place `"searchinfinity"` in `searchRouting.providers`.
 
 Searchinfinity Search supports the shared `numResults` (max 20 per request), `recencyFilter`, and include/exclude `domainFilter` options (up to 5 domains each). Answers are assembled from the model-generated per-result summaries when present, falling back to plain snippets. Accounts include a monthly free search quota shared with the Custom edition; API Key requests are limited to 5 QPS and a 30-second server-side timeout. See the [Searchinfinity API reference](https://docs.byteplus.com/api/docs/searchinfinity/Searchinfinity_API_Reference).
 
@@ -735,13 +977,30 @@ Searchinfinity Search supports the shared `numResults` (max 20 per request), `re
 }
 ```
 
-Setting `provider` is optional. In `auto` mode, an available Querit provider is tried after Searchinfinity and before Tavily. You can also select it per request with `provider: "querit"`, include it in provider arrays or `provider: "all"`, or place `"querit"` in `searchRouting.providers`.
+Setting `provider` is optional. In `auto` mode, an available Querit provider is tried after Searchinfinity and before Tavily. You can also select it per request with `provider: "querit"`, include it in a provider list such as `"querit,exa"` or `provider: "all"`, or place `"querit"` in `searchRouting.providers`.
 
 Search requests follow the official [`querit-python`](https://github.com/querit-ai/querit-python) models: `numResults` maps to `count`, include/exclude `domainFilter` values map to `filters.sites`, and recency maps to `filters.timeRange.date` (`d1`, `w1`, `m1`, or `y1`). When `includeContent` is true, result URLs are sent to `POST /v1/contents` in batches of up to 10 and returned as inline Markdown. The same Contents endpoint is used as a hosted `fetch_content` fallback after Search1API and before Parallel. Querit Search and Contents subscriptions are independent; an API key can search successfully while `/v1/contents` returns `403 No active contents subscription`.
 
+### Tabstack
+
+`tabstackApiKey` enables Tabstack Research for `web_search` and Tabstack Extract for `fetch_content`; alternatively, set `TABSTACK_API_KEY`. Get an API key from the [Tabstack console](https://console.tabstack.ai).
+
+```json
+{
+  "tabstackApiKey": "$TABSTACK_API_KEY",
+  "provider": "tabstack"
+}
+```
+
+Tabstack Research returns a cited answer instead of a list of results: within one request it runs the searches, reads the sources, and writes a report with numbered citations.
+
+For `fetch_content`, Tabstack Extract returns a page as clean Markdown and renders JavaScript-heavy pages server-side. Like the other hosted fetchers, it is used for remote targets only when `fetchRouting.allowRemoteHostedProviders` is on.
+
+Tabstack is explicit-only: it is never chosen by `auto` and never participates in `provider: "all"`. Select it with `provider: "tabstack"`, per request or as the default `provider` in `web-search.json`, or place `"tabstack"` in `searchRouting.providers`; for `fetch_content`, add `"tabstack"` to `fetchRouting.providers`, since it is not in the default fetch order. Research runs in `fast` mode by default, which usually answers in seconds; set `tabstackResearchMode` to `"balanced"` for a deeper multi-pass report that takes longer. The report becomes the answer and every cited page becomes a source, in the order the report cites them, so `numResults` does not trim the list. The Research API has no domain or recency parameters, so `domainFilter` and `recencyFilter` are not sent. Requests have a 120-second deadline in `fast` mode and 300 seconds in `balanced` mode, and respect caller cancellation.
+
 ### AnySearch
 
-AnySearch is an explicit-only provider: it is never included in zero-config `auto` fallback or in `provider: "all"`, but it can be selected with `provider: "anysearch"`, configured as the named provider, or placed in `searchRouting`. It supports anonymous requests and optional `anysearchApiKey` / `ANYSEARCH_API_KEY` credentials. Requests intentionally send only `{ query, max_results }`; `recencyFilter`, `domainFilter`, and `includeContent` do not add API request parameters. When `includeContent` is true, returned `content` fields are exposed as inline content.
+AnySearch is an explicit-only provider: it is never included in zero-config `auto` fallback or in `provider: "all"`, but it can be selected with `provider: "anysearch"`, configured as the named provider, or placed in `searchRouting`. It supports anonymous requests and optional `anysearchApiKey` / `ANYSEARCH_API_KEY` credentials. Requests intentionally send only `{ query, max_results }`, and the API caps results at 10 per search; `recencyFilter` and `includeContent` add no API request parameters, and the shared include/exclude `domainFilter` is applied locally, so a filter that matches nothing yields an empty response that `fallbackOn: ["empty"]` can route past, and an include domain that matches nothing also counts as `["domain-miss"]`. When `includeContent` is true, returned `content` fields are exposed as inline content.
 
 ### XCrawl
 
@@ -768,6 +1027,8 @@ Requests send only `{ model, input, tools }`, the shape verified against a live 
 The value must be a non-empty array containing each of `web_search` and `x_search` at most once. This intentionally does not expose per-call X handle, date, or media-understanding parameters until their request contract is stable. `recencyFilter`, `domainFilter`, and `numResults` remain prompt guidance rather than tool parameters, so an unrecognized field cannot turn a search into a 400. Sources are read in annotation-first order from `url_citation` annotations, raw `web_search_call`/`x_search_call` source lists when present, and xAI's response-level `citations` URL list.
 
 xAI's older Live Search (`search_parameters` on `/v1/chat/completions`) is deprecated and now answers HTTP 410.
+
+`xaiResponsesUrl` points xAI search at another full Responses endpoint, such as a gateway that relays to a Grok subscription; it must be an absolute http(s) URL and defaults to `https://api.x.ai/v1/responses`. When it is set, Pi's xAI sign-in is never used or sent there: only `xaiApiKey` / `XAI_API_KEY` apply, and without one xAI is unavailable. `xaiSearchTimeoutMs` sets the xAI request timeout (default `60000`, a positive integer capped at `600000`); `x_search` questions that run many X tool calls can take longer than a minute.
 
 ### Mistral Conversations
 
@@ -1003,11 +1264,31 @@ Enabling the tools mid-conversation can cost a prompt-cache miss. Some models ac
 
 `"toolActivation"` in `web-search.json` picks the behavior:
 
-- `"auto"` (the default) uses dynamic activation when the session's model accepts added tools, according to Pi's model catalog. Otherwise every enabled web tool is available from the first request, so `web_enable` never causes that cache miss. The choice is made once, from the model selected when a new session starts; switching models later doesn't change it, and warm or resumed sessions keep their recorded tools.
+- `"auto"` (the default) uses dynamic activation when the session's model accepts added tools, according to Pi's model catalog. Otherwise every enabled web tool is available from the first request, so `web_enable` never causes that cache miss. The choice follows the model selected when a new session sends its first request; later switches, manual tool changes and resumed sessions keep their tools.
 - `"dynamic"` starts every new session with `web_enable`, even on models where enabling the tools can cause a cache miss.
 - `"eager"` never uses `web_enable` and keeps every enabled web tool available from the first request. It also suits models that rarely call `web_enable` on their own.
+- `"none"` never registers `web_enable` and declares no web tool. It requires `"toolExposure": "deferred"`, described below.
 
 Restart Pi after changing it. Dynamic activation needs Pi 0.86.0 or newer; older Pi logs a warning and keeps every enabled web tool available.
+
+`"toolExposure": "deferred"` goes further: `web_search`, `source_check`, `fetch_content`, and `get_search_content` stay off every request until `web_enable` or Pi's `tool_search` loads them. `tool_search` only does this when it is enabled in Pi's settings, for example `"defaultTools": ["+tool_search"]`.
+
+```json
+{
+  "toolExposure": "deferred"
+}
+```
+
+Deferred exposure can't be combined with `"toolActivation": "eager"`. The default is `"direct"`. Restart Pi after changing it. It is not a guaranteed saving: loading the tools later can cost the cache miss described above, and finding them through `tool_search` takes an extra model turn.
+
+`"toolActivation": "none"` also drops `web_enable`. The model then reaches the web tools only through `tool_search` or `codemode` scripts, which find them with `searchTools()` and get [structured results](#in-codemode-scripts), so only what a script returns enters the conversation. Enable one of them in Pi's settings first, for example `"defaultTools": ["+codemode"]`.
+
+```json
+{
+  "toolExposure": "deferred",
+  "toolActivation": "none"
+}
+```
 
 ### Shortcuts
 
@@ -1026,7 +1307,7 @@ Values use the same format as pi keybindings (e.g. `ctrl+s`, `ctrl+shift+s`, `al
 
 Set `"enabled": false` under `tools`, `commands`, `image`, or `pdf` to disable that feature. Tool-specific settings override the legacy `webSearch.enabled` shorthand; without an override, it still disables `web_search` and `source_check`. `image.enabled: false` blocks direct image fetches and video frame extraction, and prevents video thumbnails. `pdf.enabled: false` blocks PDF extraction. For GitHub specifically, `githubClone.enabled: false` only skips clone/API specialization, and `githubPrIssue.enabled: false` only skips PR/issue specialization; neither setting unregisters `fetch_content` or blocks generic URL extraction. Pi restart is required for tool and command registration changes.
 
-Rate limits: Perplexity is capped at 10 requests/minute (client-side). Jina Search, TinyFish, Search1API, and Searchinfinity apply the plan limits documented by their APIs. Querit Search and Contents subscriptions are independent. Content fetches run 3 concurrent; direct HTTP fetches and Jina Reader use a 30s timeout by default, configurable together with `fetch.timeout` in seconds. Remote extraction fallbacks carry their own budgets and are not covered by that setting: Firecrawl 60s, Crawl4AI 60s, Kagi Extract 60s, Ollama Web Fetch 60s, Bright Data Web Unlocker 60s, TinyFish up to 150s, Gemini 120s, Datalab 120s (capped at 300s, rate-limited to 25 requests/minute on the free tier). `pdf.maxSizeMB` defaults to 20 and is capped at 50. `pdf.maxPages` defaults to 100 and limits every PDF provider to the first N pages.
+Rate limits: Perplexity is capped at 10 requests/minute (client-side). Jina Search, TinyFish, Search1API, and Searchinfinity apply the plan limits documented by their APIs. Querit Search and Contents subscriptions are independent. Content fetches run 3 concurrent; direct HTTP fetches and Jina Reader use a 30s timeout by default, configurable together with `fetch.timeout` in seconds. Remote extraction fallbacks carry their own budgets and are not covered by that setting: Firecrawl 60s, Crawl4AI 60s, Kagi Extract 60s, Ollama Web Fetch 60s, Bright Data Web Unlocker 60s, TinyFish up to 150s, Gemini 120s, Datalab 120s (capped at 300s, rate-limited to 25 requests/minute on the free tier), self-hosted PDF endpoint 120s (capped at 300s). `pdf.maxSizeMB` defaults to 20 and is capped at 50. `pdf.maxPages` defaults to 100 and limits every PDF provider to the first N pages.
 
 ## Limitations
 
@@ -1056,6 +1337,7 @@ Rate limits: Perplexity is capped at 10 requests/minute (client-side). Jina Sear
 | `searchinfinity.ts` | Byteplus Searchinfinity search provider |
 | `querit.ts` | Querit Search and Contents API provider |
 | `tavily.ts` | Tavily Search API provider |
+| `tabstack.ts` | Tabstack Research search and Tabstack Extract fetch provider |
 | `you.ts` | You.com Search API provider |
 | `firecrawl.ts` | Firecrawl search provider and extraction fallback |
 | `crawl4ai.ts` | Self-hosted Crawl4AI extraction fallback |
@@ -1068,17 +1350,31 @@ Rate limits: Perplexity is capped at 10 requests/minute (client-side). Jina Sear
 | `serpapi.ts` | Explicit-only SerpApi Google Search provider |
 | `serper.ts` | Explicit-only Serper Google SERP provider |
 | `serply.ts` | Explicit-only Serply Google SERP provider |
+| `searchapi.ts` | Explicit-only SearchApi Google Search provider |
+| `outcrawl.ts` | Explicit-only Outcrawl search provider |
+| `sofya.ts` | Explicit-only Sofya search provider |
+| `cloro.ts` | Explicit-only cloro Google Search and AI Mode provider |
+| `autom.ts` | Explicit-only Autom Google Search provider |
+| `specstream.ts` | Explicit-only SpecStream Search API and Extract API provider |
 | `baizhi.ts` | Explicit-only Baizhi Streamable HTTP MCP search provider |
 | `zai.ts` | Explicit-only Z.ai GLM Coding Plan MCP search provider |
 | `anysearch.ts` | Explicit-only AnySearch search provider |
 | `xcrawl.ts` | Explicit-only XCrawl search provider |
 | `valyu.ts` | Explicit-only Valyu research search provider |
+| `keenable.ts` | Explicit-only Keenable search provider, keyless with an optional API key |
+| `ceramic.ts` | Explicit-only Ceramic keyword search provider |
+| `cloudflare-search.ts` | Explicit-only Cloudflare Web Search API provider (Ceramic, Exa, or Linkup through AI Gateway) |
+| `linkup.ts` | Explicit-only Linkup search provider with configurable depth |
+| `ninerouter.ts` | Explicit-only search through a self-hosted 9router gateway's unified `/v1/search` |
+| `deepseek.ts` | Explicit-only DeepSeek Search and opt-in Fetch API provider |
 | `xai-search.ts` | Explicit-only xAI (Grok) hosted web/X search provider |
 | `mistral-search.ts` | Explicit-only Mistral Conversations web search provider |
 | `kimi-search.ts` | Explicit-only Kimi Code Plan search provider |
 | `searxng.ts` | Self-hosted SearXNG JSON API search provider |
+| `degoog.ts` | degoog metasearch search provider with optional API key and engine selection |
 | `duckduckgo.ts` | Explicit-only keyless DuckDuckGo HTML search provider |
-| `exa.ts` | Exa.ai search provider — direct API and MCP proxy |
+| `duckduckgo-rate-limit.ts` | DuckDuckGo request spacing, search budget, and bot-check cooldown shared between processes |
+| `exa.ts` | Exa.ai search provider — direct API and MCP proxy — and opt-in Exa contents fetch provider |
 | `extract.ts` | URL/file path routing, HTTP extraction, fallback orchestration |
 | `content-find.ts` | Bounded exact, case-insensitive, and fuzzy passage lookup |
 | `page-query.ts` | Grounded page-local answer generation with model context budgeting |
@@ -1093,7 +1389,7 @@ Rate limits: Perplexity is capped at 10 requests/minute (client-side). Jina Sear
 | `github-extract.ts` | GitHub URL parsing, clone cache, content generation |
 | `github-api.ts` | GitHub API fallback for large repos and commit SHAs |
 | `github-issue-pr.ts` | GitHub PR and issue URL parsing, gh/REST fetch, markdown rendering |
-| `perplexity.ts` | Perplexity API client with rate limiting |
+| `perplexity.ts` | Perplexity Search API client (and Sonar for YouTube summaries) with rate limiting |
 | `datalab-pdf-extract.ts` | Datalab hosted PDF-to-Markdown conversion client (upload → convert → poll) |
 | `pdf-extract.ts` | PDF text extraction, saves to markdown |
 | `rsc-extract.ts` | RSC flight data parser for Next.js pages |

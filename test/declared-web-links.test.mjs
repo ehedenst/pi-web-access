@@ -34,6 +34,7 @@ function runChild(script) {
 		"CLOUDFLARE_API_KEY",
 		"PARALLEL_API_KEY",
 		"TINYFISH_API_KEY",
+		"TABSTACK_API_KEY",
 		"FIRECRAWL_BASE_URL",
 		"FIRECRAWL_API_KEY",
 		"PI_ALLOW_BROWSER_COOKIES",
@@ -208,5 +209,5 @@ test("HTML extraction surfaces declared documentation links without broad URL he
 		output.generic.content,
 		/https:\/\/example\.com\/developers/,
 	);
-	assert.ok(output.generic.error);
+	assert.equal(output.generic.error, null);
 });

@@ -75,16 +75,24 @@ test("malformed config falls back during extension registration", () => {
 
 test("default public execution tool definitions retain their compatibility hashes", () => {
 	const expected = {
-		web_search: "c1f0e0020561c46d9dc5547664ac50ab2442e57ab9aa14d4b06a1bd18428dbae",
-		source_check: "685467b6e6bcbe32f7d7eb51805896f43077e3116e64a47b637c4584b3f2510e",
-		fetch_content: "0082465bae0f184988fd37fe152cad9c7a236e410747ba6770013895a28978d4",
-		get_search_content: "e1c7597fc085a811c0c6fcde365a96571c275c70b93a48206a38be06a7a45a5f",
+		web_search: "b596687b2b7ec2c7e54b7bce3454c15f40f5ec502e9501d00517a2798796c72c",
+		source_check: "9e1c44321d9a277dc31ce6df4ca309b77126ec5dd3c6967b0a03d5cb82be856f",
+		fetch_content: "9891bb53013ef935a9515902c998c1660c580ce0dcdfa7f25404f75b19929547",
+		get_search_content: "0671f28d0815f76acaa0afc5267aac8686ea4eaa46978f35bcd674ee6446f30a",
 	};
 	const tools = registered({}).tools.filter(tool => tool.name !== "web_enable");
 	assert.deepEqual(Object.fromEntries(tools.map(({ name, description, parameters }) => [
 		name,
 		createHash("sha256").update(JSON.stringify({ name, description, parameters })).digest("hex"),
 	])), expected);
+});
+
+test("web_search offers model only for allowed providers that support it", () => {
+	assert.equal(registeredTool({ webSearch: { allowedProviders: ["brave"] } }, "web_search").parameters.properties.model, undefined);
+	assert.equal(
+		registeredTool({ webSearch: { allowedProviders: ["brave", "xai"] } }, "web_search").parameters.properties.model.description,
+		"Model ID; needs provider xai",
+	);
 });
 
 test("search tools constrain numResults to integer values from 1 through 20", () => {
@@ -126,11 +134,19 @@ test("fetch_content schema exposes auth profile opt-in", () => {
 	assert.deepEqual(schema.anyOf.map(option => option.type), ["string", "boolean"]);
 });
 
+test("fetch_content schema offers only the same-origin redirect policy", () => {
+	const schema = registeredTool({}, "fetch_content").parameters.properties.redirects;
+	assert.equal(Value.Check(schema, "same-origin"), true);
+	assert.equal(Value.Check(schema, "follow"), false);
+});
+
 test("registered tools do not advertise disabled get_search_content", () => {
 	const fetchTool = registeredTool({ tools: { getSearchContent: { enabled: false } } }, "fetch_content");
 	assert.ok(fetchTool);
 	assert.doesNotMatch(fetchTool.description, /get_search_content/);
 	assert.match(fetchTool.description, /retrieval tool is not registered/);
+	assert.doesNotMatch(registeredTool({ tools: { getSearchContent: { enabled: false } } }, "web_search").description, /get_search_content/);
+	assert.match(registeredTool({ toolNames: { getSearchContent: "open_content" } }, "web_search").description, /retrieval with open_content /);
 });
 
 test("web activity shortcut renders through the supported string-array API", async () => {
@@ -172,10 +188,13 @@ test("tool names can be configured without changing defaults", () => {
 	}), ["research_web", "verify_sources", "grab_content", "open_content", "web_enable"]);
 });
 
-test("tool config rejects invalid, duplicate, or reserved names and unknown toolActivation", () => {
+test("tool config rejects invalid, duplicate, or reserved names and invalid activation or exposure", () => {
 	assert.match(registrationError({ toolNames: { webSearch: "1bad" } }), /toolNames\.webSearch/);
 	assert.match(registrationError({ toolNames: { webSearch: "same_name", fetchContent: "same_name" } }), /duplicates/);
-	assert.match(registrationError({ toolActivation: "lazy" }), /toolActivation.*"auto", "dynamic", or "eager"/);
+	assert.match(registrationError({ toolActivation: "lazy" }), /toolActivation.*"auto", "dynamic", "eager", or "none"/);
+	assert.match(registrationError({ toolActivation: "none" }), /toolActivation "none".*requires toolExposure "deferred"/);
+	assert.match(registrationError({ toolExposure: "hidden" }), /toolExposure.*"direct" or "deferred"/);
+	assert.match(registrationError({ toolExposure: "deferred", toolActivation: "eager" }), /toolExposure "deferred".*toolActivation "eager"/);
 	assert.match(registrationError({ toolNames: { webSearch: "web_enable" } }), /web_enable.*reserved/i);
 });
 

@@ -285,6 +285,7 @@ export function startCuratorServer(
 		if (provider === "searchinfinity") return availableProviders.searchinfinity;
 		if (provider === "querit") return availableProviders.querit;
 		if (provider === "tavily") return availableProviders.tavily;
+		if (provider === "tabstack") return availableProviders.tabstack;
 		if (provider === "firecrawl") return availableProviders.firecrawl;
 		if (provider === "jina") return availableProviders.jina;
 		if (provider === "serpdive") return availableProviders.serpdive;
@@ -292,6 +293,7 @@ export function startCuratorServer(
 		if (provider === "bocha") return availableProviders.bocha;
 		if (provider === "ollama") return availableProviders.ollama;
 		if (provider === "searxng") return availableProviders.searxng;
+		if (provider === "degoog") return availableProviders.degoog;
 		if (provider === "duckduckgo") return availableProviders.duckduckgo;
 		if (provider === "perplexity") return availableProviders.perplexity;
 		if (provider === "exa") return availableProviders.exa;
@@ -309,6 +311,18 @@ export function startCuratorServer(
 		if (provider === "baizhi") return availableProviders.baizhi;
 		if (provider === "zai") return availableProviders.zai;
 		if (provider === "valyu") return availableProviders.valyu;
+		if (provider === "keenable") return availableProviders.keenable;
+		if (provider === "ceramic") return availableProviders.ceramic;
+		if (provider === "linkup") return availableProviders.linkup;
+		if (provider === "ninerouter") return availableProviders.ninerouter;
+		if (provider === "cloudflare") return availableProviders.cloudflare;
+		if (provider === "searchapi") return availableProviders.searchapi;
+		if (provider === "outcrawl") return availableProviders.outcrawl;
+		if (provider === "sofya") return availableProviders.sofya;
+		if (provider === "cloro") return availableProviders.cloro;
+		if (provider === "autom") return availableProviders.autom;
+		if (provider === "specstream") return availableProviders.specstream;
+		if (provider === "deepseek") return availableProviders.deepseek;
 		return false;
 	}
 

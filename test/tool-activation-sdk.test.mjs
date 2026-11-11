@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall, getCurrentTools, getSystemMessageText } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createCodemodeExtension, createToolSearchExtension, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
 
 const extensionPath = new URL("../index.ts", import.meta.url).pathname;
 const root = mkdtempSync(join(tmpdir(), "pi-web-access-sdk-"));
@@ -25,8 +25,8 @@ async function withNativeEnv(config, run) {
 	}
 }
 
-function nativeHarness({ api, compat } = {}) {
-	const faux = fauxProvider({ api });
+function nativeHarness({ api, compat, models: fauxModels } = {}) {
+	const faux = fauxProvider({ api, models: fauxModels });
 	const models = createModels();
 	models.setProvider(faux.provider);
 	const modelRuntime = new Proxy(models, {
@@ -43,8 +43,8 @@ function nativeHarness({ api, compat } = {}) {
 		tools: getCurrentTools(context.messages),
 		systemText: context.messages.filter(message => message.role === "system").map(getSystemMessageText).join("\n\n"),
 	});
-	async function start({ extensions, sessionManager, reason, noTools }) {
-		const loader = new DefaultResourceLoader({ cwd: root, agentDir: root, additionalExtensionPaths: extensions ? [extensionPath] : [], noExtensions: !extensions });
+	async function start({ extensions, sessionManager, reason, noTools, extensionFactories }) {
+		const loader = new DefaultResourceLoader({ cwd: root, agentDir: root, additionalExtensionPaths: extensions ? [extensionPath] : [], noExtensions: !extensions, extensionFactories });
 		await loader.reload();
 		const { session, extensionsResult } = await createAgentSession({
 			cwd: root,
@@ -90,7 +90,7 @@ test("native Pi sends configured web schemas on the request immediately after ac
 	assert.deepEqual(requests[0].tools.map(tool => tool.name), ["web_enable"]);
 	assert.deepEqual(requests[1].tools.map(tool => tool.name), ["web_enable", "web_search", "source_check", "fetch_content", "get_search_content"]);
 	assert.ok(requests[0].tools.reduce((sum, tool) => sum + JSON.stringify(tool).length, 0) <= 700);
-	assert.ok(requests[1].tools.reduce((sum, tool) => sum + JSON.stringify(tool).length, 0) <= 11_924);
+	assert.ok(requests[1].tools.reduce((sum, tool) => sum + JSON.stringify(tool).length, 0) <= 12_119);
 
 	const renamed = await runNative({ toolNames: { webSearch: "research_web", sourceCheck: "verify_sources", fetchContent: "grab_content", getSearchContent: "open_content" } });
 	assert.deepEqual(renamed[1].tools.map(tool => tool.name), ["web_enable", "research_web", "verify_sources", "grab_content", "open_content"]);
@@ -134,6 +134,26 @@ test("native Pi on a model with native tool additions starts with web_enable by 
 	assert.deepEqual(requests[0].tools.map(tool => tool.name), ["web_enable"]);
 });
 
+test("native Pi decides auto for the model selected before the first prompt", async () => {
+	const requests = await withNativeEnv({}, async () => {
+		const { faux, requests, captureRequest, start } = nativeHarness({
+			api: "anthropic-messages",
+			compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true },
+			models: [{ id: "a" }, { id: "b" }],
+		});
+		faux.setResponses([(context) => {
+			captureRequest(context);
+			return fauxAssistantMessage("done");
+		}]);
+		const session = await start({ extensions: true, sessionManager: SessionManager.inMemory(root), reason: "startup", noTools: "builtin" });
+		await session.setModel({ ...faux.getModel("b"), compat: undefined });
+		await session.prompt("Research this");
+		session.dispose();
+		return requests;
+	});
+	assert.deepEqual(requests[0].tools.map(tool => tool.name), ["web_search", "source_check", "fetch_content", "get_search_content"]);
+});
+
 test("native Pi resumes a session recorded without pi-web-access with its recorded tools", async () => {
 	const requests = await withNativeEnv({}, async () => {
 		const { faux, requests, captureRequest, start } = nativeHarness();
@@ -154,4 +174,80 @@ test("native Pi resumes a session recorded without pi-web-access with its record
 	const recorded = requests[0].tools.map(tool => tool.name);
 	assert.ok(recorded.length > 0);
 	assert.deepEqual(requests[1].tools.map(tool => tool.name), recorded);
+});
+
+const deferredWebTools = ["web_search", "source_check", "fetch_content", "get_search_content"];
+
+test("deferred exposure keeps web_enable as the route to web tools on a model without native tool additions", async () => {
+	const requests = await withNativeEnv({ toolExposure: "deferred" }, async () => {
+		const { faux, requests, captureRequest, start } = nativeHarness();
+		faux.setResponses([
+			(context) => {
+				captureRequest(context);
+				return fauxAssistantMessage(fauxToolCall("web_enable", {}), { stopReason: "toolUse" });
+			},
+			(context) => {
+				captureRequest(context);
+				return fauxAssistantMessage("done");
+			},
+		]);
+		const session = await start({ extensions: true, sessionManager: SessionManager.inMemory(root), reason: "startup", noTools: "builtin" });
+		await session.prompt("Research this");
+		session.dispose();
+		return requests;
+	});
+	assert.deepEqual(requests[0].tools.map(tool => tool.name), ["web_enable"]);
+	assert.deepEqual(requests[1].tools.map(tool => tool.name), ["web_enable", ...deferredWebTools]);
+});
+
+test("none activation leaves deferred web tools to codemode scripts without web_enable", async () => {
+	let scriptResult;
+	const requests = await withNativeEnv({ toolExposure: "deferred", toolActivation: "none" }, async () => {
+		const { faux, requests, captureRequest, start } = nativeHarness();
+		faux.setResponses([
+			(context) => {
+				captureRequest(context);
+				return fauxAssistantMessage(fauxToolCall("codemode", {
+					// An unknown responseId answers offline, so the call proves the tool runs without web_enable.
+					code: "let call; try { call = await tools.get_search_content({ responseId: 'missing' }); } catch (error) { call = error.message; } return { names: ALL_TOOLS.map(tool => tool.name), call };",
+				}), { stopReason: "toolUse" });
+			},
+			(context) => {
+				captureRequest(context);
+				scriptResult = JSON.stringify(context.messages.filter(message => message.role === "toolResult").map(message => message.content));
+				return fauxAssistantMessage("done");
+			},
+		]);
+		const session = await start({ extensions: true, sessionManager: SessionManager.inMemory(root), reason: "startup", noTools: "builtin", extensionFactories: [createCodemodeExtension()] });
+		session.setActiveToolsByName([...session.getActiveToolNames(), "codemode"]);
+		await session.prompt("Research this");
+		session.dispose();
+		return requests;
+	});
+	for (const request of requests) assert.deepEqual(request.tools.map(tool => tool.name), ["codemode"]);
+	for (const name of deferredWebTools) assert.match(scriptResult, new RegExp(name));
+	assert.match(scriptResult, /No stored results for responseId/);
+});
+
+test("Pi's tool_search finds and loads a deferred web tool", async () => {
+	const requests = await withNativeEnv({ toolExposure: "deferred" }, async () => {
+		const { faux, requests, captureRequest, start } = nativeHarness();
+		faux.setResponses([
+			(context) => {
+				captureRequest(context);
+				return fauxAssistantMessage(fauxToolCall("tool_search", { query: "fetch content from a URL" }), { stopReason: "toolUse" });
+			},
+			(context) => {
+				captureRequest(context);
+				return fauxAssistantMessage("done");
+			},
+		]);
+		const session = await start({ extensions: true, sessionManager: SessionManager.inMemory(root), reason: "startup", noTools: "builtin", extensionFactories: [createToolSearchExtension()] });
+		session.setActiveToolsByName([...session.getActiveToolNames(), "tool_search"]);
+		await session.prompt("Read https://example.com");
+		session.dispose();
+		return requests;
+	});
+	assert.ok(!requests[0].tools.some(tool => deferredWebTools.includes(tool.name)));
+	assert.ok(requests[1].tools.some(tool => tool.name === "fetch_content"));
 });
