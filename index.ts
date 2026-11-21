@@ -6,7 +6,7 @@ import { normalizeFetchContentParams } from "./fetch-params.ts";
 import { answerFromPage } from "./page-query.ts";
 import { rewriteSearchQuery } from "./query-rewrite.ts";
 import { clearCloneCache, releaseClonesUnusedSince, touchClones } from "./github-extract.ts";
-import { ALL_SEARCH_PROVIDERS, getAllowedSearchProviders, getConfiguredSearchRouting, parseProviderArgument, RESOLVED_SEARCH_PROVIDERS, search, type AttributedSearchResponse, type ProviderAvailability, type SearchProvider, type SearchProviderSelection, type ResolvedSearchProvider } from "./gemini-search.ts";
+import { ALL_SEARCH_PROVIDERS, getAllowedSearchProviders, getAvailableCustomSearchProviders, getConfiguredSearchRouting, parseProviderArgument, RESOLVED_SEARCH_PROVIDERS, search, type AttributedSearchResponse, type BuiltinSearchProvider, type ProviderAvailability, type SearchProvider, type SearchProviderSelection, type ResolvedSearchProvider } from "./gemini-search.ts";
 export type { ProviderAvailability } from "./gemini-search.ts";
 import { formatSeconds, getWebSearchConfigDir, resolveCuratorNetworkConfig, runWithProxy } from "./utils.ts";
 import {
@@ -46,7 +46,6 @@ import { isParallelAvailable } from "./parallel.ts";
 import { isParallelMcpAvailable } from "./parallel-mcp.ts";
 import { parseStringifiedArrays } from "./tool-arguments.ts";
 import { isTinyFishAvailable } from "./tinyfish.ts";
-import { isSearch1APIAvailable } from "./search1api.ts";
 import { isSearchinfinityAvailable } from "./searchinfinity.ts";
 import { isQueritAvailable } from "./querit.ts";
 import { isTavilyAvailable } from "./tavily.ts";
@@ -54,7 +53,6 @@ import { isTabstackAvailable } from "./tabstack.ts";
 import { isYouAvailable } from "./you.ts";
 import { isFirecrawlAvailable } from "./firecrawl.ts";
 import { isJinaSearchAvailable } from "./jina-search.ts";
-import { isSerpdiveAvailable } from "./serpdive.ts";
 import { isKagiAvailable } from "./kagi.ts";
 import { isBochaAvailable } from "./bocha.ts";
 import { isOllamaAvailable } from "./ollama.ts";
@@ -65,27 +63,15 @@ import { isAnySearchAvailable } from "./anysearch.ts";
 import { isXaiSearchAvailable } from "./xai-search.ts";
 import { isMistralAvailable } from "./mistral-search.ts";
 import { isKimiSearchAvailable } from "./kimi-search.ts";
-import { isBrightDataAvailable } from "./brightdata.ts";
-import { isSerpBaseAvailable } from "./serpbase.ts";
-import { isSerpApiAvailable } from "./serpapi.ts";
-import { isSerperAvailable } from "./serper.ts";
-import { isSerplyAvailable } from "./serply.ts";
 import { isKeenableAvailable } from "./keenable.ts";
 import { isCeramicAvailable } from "./ceramic.ts";
 import { isLinkupAvailable } from "./linkup.ts";
 import { isNineRouterAvailable } from "./ninerouter.ts";
 import { isCloudflareSearchAvailable } from "./cloudflare-search.ts";
-import { isSearchApiAvailable } from "./searchapi.ts";
-import { isOutcrawlAvailable } from "./outcrawl.ts";
-import { isSofyaAvailable } from "./sofya.ts";
-import { isCloroAvailable } from "./cloro.ts";
-import { isAutomAvailable } from "./autom.ts";
-import { isSpecStreamAvailable } from "./specstream.ts";
 import { isDeepSeekAvailable } from "./deepseek.ts";
 import { isBaizhiAvailable } from "./baizhi.ts";
 import { isZaiAvailable } from "./zai.ts";
 import { isValyuAvailable } from "./valyu.ts";
-import { isXcrawlAvailable } from "./xcrawl.ts";
 import { buildSearchErrorPlan, type SearchErrorDetails, type SearchErrorPlan } from "./render-search-error.ts";
 import { findModelWithProviderRouting, isModelInScope, resolveHelperModelSelector } from "./summary-model-scope.ts";
 import { registerCuratorRunLifecycle, resolveWebSearchWorkflow, type WebSearchWorkflow } from "./curator-run.ts";
@@ -236,7 +222,8 @@ function curatorResultIndex(queryIndex: number, entryIndex: number, queryCount: 
 }
 
 function curatorResultIndexCapacity(queryCount: number): number {
-	return queryCount * RESOLVED_SEARCH_PROVIDERS.length;
+	// Custom providers in a provider list add entries beyond the built-in count.
+	return queryCount * Math.max(RESOLVED_SEARCH_PROVIDERS.length, getAllowedSearchProviders().length);
 }
 
 function isCommandEnabled(config: WebSearchConfig, name: "websearch" | "curator" | "search" | "google-account"): boolean {
@@ -346,7 +333,6 @@ async function getProviderAvailability(ctx: ExtensionContext): Promise<ProviderA
 		parallel: allowedProviders.has("parallel") && isParallelAvailable(),
 		"parallel-mcp": allowedProviders.has("parallel-mcp") && isParallelMcpAvailable(),
 		tinyfish: allowedProviders.has("tinyfish") && isTinyFishAvailable(),
-		search1api: allowedProviders.has("search1api") && isSearch1APIAvailable(),
 		searchinfinity: allowedProviders.has("searchinfinity") && isSearchinfinityAvailable(),
 		querit: allowedProviders.has("querit") && isQueritAvailable(),
 		tavily: allowedProviders.has("tavily") && isTavilyAvailable(),
@@ -354,7 +340,6 @@ async function getProviderAvailability(ctx: ExtensionContext): Promise<ProviderA
 		you: allowedProviders.has("you") && isYouAvailable(),
 		firecrawl: allowedProviders.has("firecrawl") && isFirecrawlAvailable(),
 		jina: allowedProviders.has("jina") && isJinaSearchAvailable(),
-		serpdive: allowedProviders.has("serpdive") && isSerpdiveAvailable(),
 		kagi: allowedProviders.has("kagi") && isKagiAvailable(),
 		bocha: allowedProviders.has("bocha") && isBochaAvailable(),
 		ollama: allowedProviders.has("ollama") && isOllamaAvailable(),
@@ -366,14 +351,8 @@ async function getProviderAvailability(ctx: ExtensionContext): Promise<ProviderA
 		gemini: geminiApiAvail || !!geminiWebAvail,
 		kimi: allowedProviders.has("kimi") && await isKimiSearchAvailable(ctx),
 		anysearch: allowedProviders.has("anysearch") && isAnySearchAvailable(),
-		xcrawl: allowedProviders.has("xcrawl") && isXcrawlAvailable(),
 		xai: allowedProviders.has("xai") && await isXaiSearchAvailable(ctx),
 		mistral: allowedProviders.has("mistral") && isMistralAvailable(),
-		brightdata: allowedProviders.has("brightdata") && isBrightDataAvailable(),
-		serpbase: allowedProviders.has("serpbase") && isSerpBaseAvailable(),
-		serpapi: allowedProviders.has("serpapi") && isSerpApiAvailable(),
-		serper: allowedProviders.has("serper") && isSerperAvailable(),
-		serply: allowedProviders.has("serply") && isSerplyAvailable(),
 		baizhi: allowedProviders.has("baizhi") && isBaizhiAvailable(),
 		zai: allowedProviders.has("zai") && isZaiAvailable(),
 		valyu: allowedProviders.has("valyu") && isValyuAvailable(),
@@ -382,16 +361,11 @@ async function getProviderAvailability(ctx: ExtensionContext): Promise<ProviderA
 		linkup: allowedProviders.has("linkup") && isLinkupAvailable(),
 		ninerouter: allowedProviders.has("ninerouter") && isNineRouterAvailable(),
 		cloudflare: allowedProviders.has("cloudflare") && isCloudflareSearchAvailable(),
-		searchapi: allowedProviders.has("searchapi") && isSearchApiAvailable(),
-		outcrawl: allowedProviders.has("outcrawl") && isOutcrawlAvailable(),
-		sofya: allowedProviders.has("sofya") && isSofyaAvailable(),
-		cloro: allowedProviders.has("cloro") && isCloroAvailable(),
-		autom: allowedProviders.has("autom") && isAutomAvailable(),
-		specstream: allowedProviders.has("specstream") && isSpecStreamAvailable(),
 		deepseek: allowedProviders.has("deepseek") && isDeepSeekAvailable(),
 	};
 	return {
 		all: ALL_SEARCH_PROVIDERS.some(provider => provider === "gemini" ? geminiApiAvail : providers[provider]),
+		customProviders: getAvailableCustomSearchProviders(),
 		...providers,
 	};
 }
@@ -463,7 +437,7 @@ function resolveProvider(
 		if (routing) {
 			for (const candidate of routing.providers) {
 				if (candidate === "openai" && routing.useCurrentModel === true && !isCurrentModelHostedSearchEligible(ctx)) continue;
-				if (available[candidate]) return candidate;
+				if (available[candidate as BuiltinSearchProvider] || available.customProviders?.includes(candidate)) return candidate;
 			}
 			return routing.providers.find(candidate => candidate !== "openai" || routing.useCurrentModel !== true || isCurrentModelHostedSearchEligible(ctx)) ?? routing.providers[0];
 		}
@@ -472,7 +446,7 @@ function resolveProvider(
 	if (provider === "all") {
 		return available.all ? "all" : firstAvailableProvider(available, preferOpenAI, "exa");
 	}
-	if (ALL_SEARCH_PROVIDERS.includes(provider) && !available[provider]) {
+	if (ALL_SEARCH_PROVIDERS.includes(provider as BuiltinSearchProvider) && !available[provider as BuiltinSearchProvider]) {
 		return firstAvailableProvider(available, provider === "openai" ? false : preferOpenAI, provider);
 	}
 	return provider;
@@ -497,6 +471,7 @@ interface PendingCurate {
 	recencyFilter?: "day" | "week" | "month" | "year";
 	domainFilter?: string[];
 	category?: string;
+	objective?: string;
 	availableProviders: ProviderAvailability;
 	defaultProvider: SearchProvider;
 	searchProvider: SearchProviderSelection;
@@ -1285,6 +1260,7 @@ export default function (pi: ExtensionAPI) {
 								numResults: pc.numResults,
 								recencyFilter: pc.recencyFilter,
 								domainFilter: pc.domainFilter,
+								objective: pc.objective,
 								includeContent: pc.includeContent,
 								category: pc.category,
 								signal: addSearchSignal,
@@ -1442,12 +1418,13 @@ export default function (pi: ExtensionAPI) {
 		label: "Web Search",
 		prepareArguments: (args) => parseStringifiedArrays(args, ["queries", "domainFilter"]) as never,
 		description:
-			`Search the web for sources or answers.${getSearchContentEnabled ? ` Full results are stored for retrieval with ${toolNames.getSearchContent} by responseId.` : ""} Prefer 2-4 varied queries.`,
+			`Search the web for sources or answers.${getSearchContentEnabled ? ` Full results are stored for ${toolNames.getSearchContent} by responseId.` : ""} Prefer 2-4 varied queries.`,
 		promptSnippet:
 			"Web research. Prefer {queries:[...]} with 2-4 varied angles; omit provider unless overriding the default.",
 		parameters: Type.Object({
 			query: Type.Optional(Type.String()),
 			queries: Type.Optional(Type.Array(Type.String(), { description: "Run concurrently (up to three at a time); vary the angle" })),
+			objective: Type.Optional(Type.String({ description: "Goal; Exa API, Parallel" })),
 			numResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 20, description: "Default 5" })),
 			includeContent: Type.Optional(Type.Boolean({ description: "Also fetch full page content" })),
 			recencyFilter: Type.Optional(StringEnum(["day", "week", "month", "year"])),
@@ -1457,10 +1434,10 @@ export default function (pi: ExtensionAPI) {
 			provider: Type.Optional(Type.String({ description: providerDescription })),
 			workflow: Type.Optional(
 				StringEnum(["none", "summary-review", "auto-summary"], {
-					description: "Default none; summary-review opens the curator; auto-summary summarizes",
+					description: "Default none; summary-review opens the curator",
 				}),
 			),
-			proxy: Type.Optional(Type.String({ description: "Proxy URL; omit by default (env proxy vars ignored); \"\" forces direct" })),
+			proxy: Type.Optional(Type.String({ description: "Proxy URL; omit by default; \"\" forces direct" })),
 		}),
 		outputSchema: webSearchOutputSchema,
 		exposure: toolExposure,
@@ -1494,7 +1471,7 @@ export default function (pi: ExtensionAPI) {
 					};
 				}
 
-				if (shouldCurate && params.model !== undefined) {
+				if (shouldCurate && params.model?.trim()) {
 					return {
 						content: [{ type: "text", text: "Error: model cannot be used with workflow \"summary-review\". Pass workflow \"none\" or \"auto-summary\" to search with a specific model." }],
 						details: { error: "model is not supported with summary-review" },
@@ -1551,6 +1528,7 @@ export default function (pi: ExtensionAPI) {
 					recencyFilter,
 					domainFilter: params.domainFilter,
 					category: params.category,
+					objective: params.objective,
 					availableProviders,
 					defaultProvider,
 					searchProvider,
@@ -1614,6 +1592,7 @@ export default function (pi: ExtensionAPI) {
 							numResults: params.numResults,
 							recencyFilter,
 							domainFilter: params.domainFilter,
+							objective: params.objective,
 							includeContent: params.includeContent,
 							category: params.category,
 							signal: searchSignal,
@@ -2070,6 +2049,9 @@ export default function (pi: ExtensionAPI) {
 			try {
 				normalized = normalizeFetchContentParams(args);
 			} catch {
+				return new Text(theme.fg("toolTitle", theme.bold("fetch ")) + theme.fg("error", "(invalid parameters)"), 0, 0);
+			}
+			if (normalized.problems.length > 0) {
 				return new Text(theme.fg("toolTitle", theme.bold("fetch ")) + theme.fg("error", "(invalid parameters)"), 0, 0);
 			}
 			const { urlList, options } = normalized;

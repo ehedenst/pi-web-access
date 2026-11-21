@@ -6,7 +6,8 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import initializeExtension from "../index.ts";
-import { getActiveProxy, installGlobalProxyFetch, isProxyBypassedUrl, runWithProxy } from "../utils.ts";
+import { createStandaloneWebToolCore } from "../web-tool-core.ts";
+import { getActiveProxy, installGlobalProxyFetch, isProxyBypassedUrl, normalizeProxyUrl, runWithProxy } from "../utils.ts";
 
 const originalFetch = globalThis.fetch;
 const originalPath = process.env.PATH;
@@ -118,6 +119,97 @@ function proxyArg(args) {
 	const index = args.indexOf("-x");
 	return index === -1 ? undefined : args[index + 1];
 }
+
+test("proxy normalization preserves default HTTP(S) ports for curl", () => {
+	for (const [input, expected] of [
+		["http://proxy.example", "http://proxy.example:80/"],
+		["http://proxy.example:80", "http://proxy.example:80/"],
+		["https://proxy.example", "https://proxy.example:443/"],
+		["https://proxy.example:443", "https://proxy.example:443/"],
+		["http://proxy.example:8080", "http://proxy.example:8080/"],
+		["https://proxy.example:8443", "https://proxy.example:8443/"],
+		["http://user:p%40ss@proxy.example:80", "http://user:p%40ss@proxy.example:80/"],
+		["https://user:p%40ss@proxy.example:443", "https://user:p%40ss@proxy.example:443/"],
+		["http://[::1]:80", "http://[::1]:80/"],
+		["https://[::1]:443", "https://[::1]:443/"],
+		["http://proxy.example:80/path?query=1#fragment", "http://proxy.example:80/path"],
+		["socks5h://proxy.example:1080", "socks5h://proxy.example:1080"],
+		["socks5://proxy.example", "socks5://proxy.example"],
+		["", null],
+		[undefined, null],
+	]) {
+		assert.equal(normalizeProxyUrl(input, "test proxy"), expected, String(input));
+	}
+});
+
+test("default HTTP(S) proxy ports reach curl explicitly", async (t) => {
+	await withFakeCurl(t, {
+		"https://example.com/page": { status: 200, statusText: "OK", body: "through proxy" },
+	}, async (logPath) => {
+		const cases = [
+			["http://proxy.example", "http://proxy.example:80/"],
+			["http://proxy.example:80", "http://proxy.example:80/"],
+			["https://proxy.example", "https://proxy.example:443/"],
+			["https://proxy.example:443", "https://proxy.example:443/"],
+		];
+		for (const [proxy] of cases) {
+			const response = await runWithProxy(proxy, () => fetch("https://example.com/page"));
+			assert.equal(await response.text(), "through proxy");
+		}
+		const calls = await readCurlCalls(logPath);
+		assert.deepEqual(calls.map(proxyArg), cases.map(([, expected]) => expected));
+	});
+});
+
+for (const [proxy, expected] of [
+	["http://call-proxy.example", "http://call-proxy.example:80/"],
+	["https://call-proxy.example", "https://call-proxy.example:443/"],
+]) {
+	for (const toolName of ["webSearch", "sourceCheck"]) {
+		test(`${toolName} uses the default port for caller-attached ${proxy} on result pages`, async (t) => {
+			const previousKey = process.env.BRAVE_API_KEY;
+			process.env.BRAVE_API_KEY = "default-port-test-key";
+			t.after(() => {
+				if (previousKey === undefined) delete process.env.BRAVE_API_KEY;
+				else process.env.BRAVE_API_KEY = previousKey;
+			});
+			const apiUrl = "https://api.search.brave.com/res/v1/web/search?q=proxy+ports&count=1";
+			const pageUrl = "https://example.com/default-port";
+			await withFakeCurl(t, {
+				[apiUrl]: {
+					status: 200, statusText: "OK",
+					body: JSON.stringify({ web: { results: [{ title: "Proxy ports", url: pageUrl, description: "Proxy port docs" }] } }),
+				},
+				[pageUrl]: { status: 200, statusText: "OK", body: "<html><title>Proxy ports</title><body>Default proxy port documentation.</body></html>" },
+			}, async (logPath) => {
+				const core = createStandaloneWebToolCore();
+				const result = await core[toolName]({
+					...(toolName === "webSearch"
+						? { query: "proxy ports", includeContent: true }
+						: { claim: "proxy ports", fetchContent: true }),
+					provider: "brave", numResults: 1, proxy,
+				});
+				assert.notEqual(result.isError, true, JSON.stringify(result));
+				const calls = await readCurlCalls(logPath);
+				assert.deepEqual(calls.map(args => args.at(-1)), [apiUrl, pageUrl]);
+				assert.deepEqual(calls.map(proxyArg), [expected, expected]);
+			});
+		});
+	}
+}
+
+test("configured default HTTP proxy port matches equivalent locked per-call URLs", async (t) => {
+	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-default-port-test-"));
+	t.after(() => rm(dir, { recursive: true, force: true }));
+	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "http://proxy.example:80", lockProxy: true }));
+	assert.deepEqual(runConfigProbe(dir, `
+		console.log(JSON.stringify([
+			runWithProxy(undefined, () => getActiveProxy()),
+			runWithProxy("http://proxy.example", () => getActiveProxy()),
+			runWithProxy("http://proxy.example:80", () => getActiveProxy()),
+		]));
+	`), Array(3).fill("http://proxy.example:80/"));
+});
 
 test("a proxy set through a second loaded copy of the module is not skipped", async (t) => {
 	await withFakeCurl(t, {
@@ -574,19 +666,20 @@ test("fetch_content passes the explicit proxy through queued extraction", async 
 
 test("websearch command scopes searches but not model callbacks to configured proxy", async (t) => {
 	await withFakeCurl(t, {
-		"https://run.xcrawl.com/v1/serp": {
+		"https://search.example.com/serp": {
 			status: 200,
 			statusText: "OK",
 			body: JSON.stringify({
-				search_metadata: { status: "completed" },
 				organic_results: [{ title: "Result", link: "https://example.com/result", snippet: "Answer" }],
 			}),
 		},
 	}, async (logPath) => {
 		const configDir = dirname(logPath);
 		await writeFile(join(configDir, "web-search.json"), JSON.stringify({
-			provider: "xcrawl",
-			xcrawlApiKey: "xc-test-key",
+			provider: "stub",
+			customSearchProviders: {
+				stub: { url: "https://search.example.com/serp", method: "POST", body: { q: "{query}" }, results: "organic_results", fields: { title: "title", url: "link", snippet: "snippet" } },
+			},
 			proxy: "http://configured-proxy.example:8080",
 			autoOpenBrowser: false,
 			curatorTimeoutSeconds: 5,
@@ -689,7 +782,7 @@ test("websearch command scopes searches but not model callbacks to configured pr
 		});
 		const calls = await readCurlCalls(logPath);
 		assert.equal(calls.length, 2);
-		assert.equal(calls.filter((args) => args.at(-1) === "https://run.xcrawl.com/v1/serp").length, 2);
+		assert.equal(calls.filter((args) => args.at(-1) === "https://search.example.com/serp").length, 2);
 		assert.ok(calls.every((args) => ["http://configured-proxy.example:8080", "http://configured-proxy.example:8080/"].includes(proxyArg(args))));
 	});
 });
