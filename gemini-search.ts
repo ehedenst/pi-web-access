@@ -5,7 +5,8 @@ import { activityMonitor } from "./activity.ts";
 import { CredentialResolutionError } from "./credential-source.ts";
 import { getApiKey, getVersionedApiBase, fetchGeminiApi, isGatewayConfigured, isGeminiApiAvailable, redactGeminiApiResponse } from "./gemini-api.ts";
 import { isGeminiAdcAvailable } from "./gemini-adc.ts";
-import { getGeminiWebAvailabilityDiagnostic, isGeminiWebAvailable, queryWithCookies } from "./gemini-web.ts";
+import { browserCookieAccessHint, browserCookieAccessHintLine, getGeminiWebAvailabilityDiagnostic, isGeminiWebAvailable, queryWithCookies, requestBrowserCookieAccess } from "./gemini-web.ts";
+import type { BrowserCookieConsent } from "./gemini-web-config.ts";
 import { isPerplexityAvailable, searchWithPerplexity, type SearchResult, type SearchResponse, type SearchOptions } from "./perplexity.ts";
 import { normalizeDomain } from "./domain-filter-normalization.ts";
 import { judgeOffTopic, OFFTOPIC_JUDGE_MODELS, type OffTopicJudgeModel } from "./offtopic-judge.ts";
@@ -50,6 +51,7 @@ import { isKimiSearchAvailable, searchWithKimi } from "./kimi-search.ts";
 import { isMistralAvailable, searchWithMistral } from "./mistral-search.ts";
 import { isCustomSearchProviderAvailable, parseCustomSearchProviders, searchWithCustomProvider, type CustomSearchProviderConfig } from "./custom-search.ts";
 import { getWebSearchConfigPath } from "./utils.ts";
+import { getRetrievalOnlyPolicy, isModelSearchProvider, retrievalOnlyError, retrievalOnlyExhaustedError } from "./retrieval-only.ts";
 
 export const RESOLVED_SEARCH_PROVIDERS = ["openai", "brave", "parallel", "parallel-mcp", "tinyfish", "searchinfinity", "querit", "tavily", "you", "firecrawl", "jina", "searxng", "degoog", "duckduckgo", "perplexity", "gemini", "kimi", "exa", "kagi", "ollama", "anysearch", "xai", "mistral", "valyu", "bocha", "baizhi", "zai", "keenable", "ceramic", "deepseek", "linkup", "ninerouter", "cloudflare", "tabstack"] as const;
 // Former built-in providers. Naming one fails with a pointer to its custom-provider recipe
@@ -138,6 +140,8 @@ type SearchConfig = {
 	searchRouting?: SearchRoutingConfig;
 	searchModel?: string;
 	allowedProviders?: ResolvedSearchProvider[];
+	/** webSearch.allowedProviders as configured, before the retrieval-only policy narrowed it. */
+	allowedBeforePolicy?: ResolvedSearchProvider[];
 	customProviders: Map<string, CustomSearchProviderConfig>;
 };
 
@@ -169,12 +173,21 @@ function getSearchConfig(): SearchConfig {
 	if (webSearch !== undefined && (!webSearch || typeof webSearch !== "object" || Array.isArray(webSearch))) {
 		throw new Error(`webSearch in ${CONFIG_PATH} must be an object`);
 	}
-	const allowedProviders = webSearch && Object.hasOwn(webSearch, "allowedProviders")
+	let allowedProviders = webSearch && Object.hasOwn(webSearch, "allowedProviders")
 		? normalizeResolvedProviderList((webSearch as Record<string, unknown>).allowedProviders, `webSearch.allowedProviders in ${CONFIG_PATH}`, customProviders)
 		: undefined;
 	const searchProviderConfigured = Object.hasOwn(raw, "searchProvider") || Object.hasOwn(raw, "provider");
 	const searchProvider = normalizeSearchProviderSelection(raw.searchProvider ?? raw.provider, `provider in ${CONFIG_PATH}`, customProviders);
-	const searchRouting = Object.hasOwn(raw, "searchRouting") ? normalizeSearchRouting(raw.searchRouting, customProviders) : undefined;
+	let searchRouting = Object.hasOwn(raw, "searchRouting") ? normalizeSearchRouting(raw.searchRouting, customProviders) : undefined;
+	const allowedBeforePolicy = allowedProviders;
+	if (getRetrievalOnlyPolicy().enabled) {
+		// A configured provider chooses where queries go, so naming a model is refused; lists are narrowed.
+		for (const key of ["searchProvider", "provider"] as const) {
+			if (Object.hasOwn(raw, key)) assertNoModelSearchProviders(normalizeSearchProviderSelection(raw[key], "provider", customProviders), `${key} in ${CONFIG_PATH}`);
+		}
+		if (allowedProviders) allowedProviders = withoutModelProviders(allowedProviders);
+		if (searchRouting) searchRouting = { ...searchRouting, providers: withoutModelProviders(searchRouting.providers) };
+	}
 	if (allowedProviders) {
 		if (Object.hasOwn(raw, "searchProvider")) {
 			assertSearchProviderSelectionAllowed(normalizeSearchProviderSelection(raw.searchProvider, "provider", customProviders), `searchProvider in ${CONFIG_PATH}`, allowedProviders);
@@ -190,6 +203,7 @@ function getSearchConfig(): SearchConfig {
 		...(searchRouting ? { searchRouting } : {}),
 		...(searchModel ? { searchModel } : {}),
 		...(allowedProviders ? { allowedProviders } : {}),
+		...(allowedBeforePolicy ? { allowedBeforePolicy } : {}),
 		customProviders,
 	};
 	return cachedSearchConfig;
@@ -287,6 +301,7 @@ export function assertSearchProviderSelectionAllowed(
 	label = "provider",
 	allowedProviders = getSearchConfig().allowedProviders,
 ): void {
+	assertNoModelSearchProviders(selection);
 	if (!allowedProviders) return;
 	const requested = Array.isArray(selection)
 		? selection
@@ -299,7 +314,30 @@ export function assertSearchProviderSelectionAllowed(
 
 export function getAllowedSearchProviders(): readonly ResolvedSearchProvider[] {
 	const config = getSearchConfig();
-	return config.allowedProviders ?? [...RESOLVED_SEARCH_PROVIDERS, ...config.customProviders.keys() as Iterable<CustomSearchProvider>];
+	const providers = config.allowedProviders ?? [...RESOLVED_SEARCH_PROVIDERS, ...config.customProviders.keys() as Iterable<CustomSearchProvider>];
+	return getRetrievalOnlyPolicy().enabled ? providers.filter(provider => !isModelSearchProvider(provider)) : providers;
+}
+
+function assertNoModelSearchProviders(selection: SearchProviderSelection, origin?: string): void {
+	const policy = getRetrievalOnlyPolicy();
+	if (!policy.enabled) return;
+	const blocked = (Array.isArray(selection) ? selection : [selection]).filter(isModelSearchProvider);
+	if (blocked.length === 0) return;
+	throw retrievalOnlyError(`Search provider ${JSON.stringify(blocked[0])}${origin ? ` set by ${origin}` : ""}`, policy);
+}
+
+/** The candidates that config allows but the retrieval-only policy keeps out. */
+function modelProvidersSkippedByPolicy(candidates: readonly ResolvedSearchProvider[]): ResolvedSearchProvider[] {
+	if (!getRetrievalOnlyPolicy().enabled) return [];
+	const config = getSearchConfig();
+	const configured: readonly ResolvedSearchProvider[] = config.allowedBeforePolicy ?? RESOLVED_SEARCH_PROVIDERS;
+	return candidates.filter(provider => isModelSearchProvider(provider) && configured.includes(provider));
+}
+
+function withoutModelProviders(providers: ResolvedSearchProvider[]): ResolvedSearchProvider[] {
+	const kept = providers.filter(provider => !isModelSearchProvider(provider));
+	if (kept.length === 0) throw retrievalOnlyExhaustedError("search", providers);
+	return kept;
 }
 
 export function getCustomSearchProviderNames(): string[] {
@@ -378,6 +416,8 @@ export interface FullSearchOptions extends SearchOptions {
 	providerFromConfig?: boolean;
 	includeContent?: boolean;
 	extensionContext?: ExtensionContext;
+	/** Lets an explicit Gemini search ask the user to turn on browser cookie access. */
+	browserCookieConsent?: BrowserCookieConsent;
 	/** Forwarded to providers that understand them (category: Exa; objective: Exa, Parallel); ignored elsewhere. */
 	category?: string;
 	objective?: string;
@@ -519,6 +559,8 @@ async function searchWithResolvedProvider(
 	query: string,
 	options: FullSearchOptions,
 	useCurrentModel = false,
+	// Only a single requested provider asks; fallback chains and "all" must never open a dialog.
+	askBrowserCookies = false,
 ): Promise<ProviderSearchResponse> {
 	const custom = getSearchConfig().customProviders.get(provider);
 	if (custom) return { ...(await searchWithCustomProvider(provider, custom, query, options)), provider };
@@ -560,14 +602,26 @@ async function searchWithResolvedProvider(
 	if (provider === "duckduckgo") return { ...(await searchWithDuckDuckGo(query, options)), provider };
 	if (provider === "kimi") return { ...(await searchWithKimi(query, options, options.extensionContext)), provider };
 	if (provider === "gemini") {
-		const result = await searchWithGemini(query, options, true);
+		let result: SearchResponse | null = null;
+		let failure: unknown;
+		try {
+			result = await searchWithGemini(query, options, true);
+		} catch (err) {
+			// A failing API route (429, 500) can still be rescued by Gemini Web; these can't.
+			if (options.model !== undefined || err instanceof CredentialResolutionError || isAbortError(err)) throw err;
+			failure = err;
+		}
+		if (!result && askBrowserCookies && await requestBrowserCookieAccess(options.browserCookieConsent, options.signal)) {
+			result = await searchWithGeminiWeb(query, options);
+		}
 		if (result) return { ...result, provider };
+		if (failure) throw failure;
 		throw new Error(
 			"Gemini search unavailable. Either:\n" +
 			`  1. Configure geminiApiKey in ${CONFIG_PATH} or set GEMINI_API_KEY\n` +
 			"  2. Set GOOGLE_GEMINI_BASE_URL + CLOUDFLARE_API_KEY for Cloudflare AI Gateway routing\n" +
 			"  3. Set geminiAuth to \"adc\" in web-search.json with a Google Cloud ADC + project/location\n" +
-			"  4. Sign into gemini.google.com in a supported Chromium-based browser",
+			`  4. ${browserCookieAccessHint(options.browserCookieConsent, "     ")}`,
 		);
 	}
 	return { ...(await searchWithExa(query, options)), provider };
@@ -680,6 +734,8 @@ async function searchWithProviders(
 			: await isResolvedProviderAvailable(provider, options),
 	})))).filter((entry) => entry.available).map((entry) => entry.provider);
 	if (providers.length === 0) {
+		const skipped = selectedProviders ? [] : modelProvidersSkippedByPolicy(ALL_SEARCH_PROVIDERS);
+		if (skipped.length > 0) throw retrievalOnlyExhaustedError("search", skipped);
 		throw new Error("No configured search provider available for provider \"all\". Parallel MCP, degoog, DuckDuckGo, Kimi, AnySearch, xAI, Mistral, You.com, Valyu, Baizhi, Z.ai, Keenable, Ceramic, DeepSeek, Linkup, 9router, Cloudflare, Tabstack, and custom providers are excluded.");
 	}
 
@@ -804,7 +860,8 @@ async function searchWithConfiguredRouting(
 			let kind = weak.empty && routing.fallbackOn.includes("empty") ? "empty" : weak.domainMiss && routing.fallbackOn.includes("domain-miss") ? "domain-miss" : undefined;
 			// Over MCP there is no Pi model registry, so the off-topic check is inactive there.
 			const registry = options.extensionContext?.modelRegistry;
-			if (!kind && !weak.empty && routing.offTopicModel && routing.fallbackOn.includes("off-topic") && registry) {
+			// The judge is a model call, so the retrieval-only policy keeps the response as is.
+			if (!kind && !weak.empty && routing.offTopicModel && routing.fallbackOn.includes("off-topic") && registry && !getRetrievalOnlyPolicy().enabled) {
 				// A deadline during the check keeps the response: it is still a success.
 				const judgment = await untilDeadline(judgeOffTopic(routing.offTopicModel, query, response, registry, options.signal))
 					.catch((err) => { if (timedOut()) return { error: `routing timeout after ${routing.timeoutMs}ms` }; throw err; });
@@ -847,7 +904,7 @@ export async function search(query: string, options: FullSearchOptions = {}): Pr
 		return searchWithProviders(query, options, normalizeResolvedProviderList(provider, "provider"), routing);
 	}
 	if (provider === "all") return searchWithProviders(query, options);
-	if (provider !== "auto") return searchWithResolvedProvider(provider, query, options);
+	if (provider !== "auto") return searchWithResolvedProvider(provider, query, options, false, true);
 	if (!config.searchProviderConfigured && config.searchRouting) {
 		return searchWithConfiguredRouting(query, options, config.searchRouting);
 	}
@@ -862,7 +919,7 @@ export async function search(query: string, options: FullSearchOptions = {}): Pr
 		firstEmpty ??= response;
 		return null;
 	};
-	const allowed = new Set(config.allowedProviders ?? RESOLVED_SEARCH_PROVIDERS);
+	const allowed = new Set(getAllowedSearchProviders());
 	const attempt = async (provider: ResolvedSearchProvider): Promise<AttributedSearchResponse | null> => {
 		if (!allowed.has(provider) || !(await isResolvedProviderAvailable(provider, options))) return null;
 		try {
@@ -916,6 +973,8 @@ export async function search(query: string, options: FullSearchOptions = {}): Pr
 	if (fallbackErrors.length > 0) {
 		throw new Error(`Auto provider search failed:\n  - ${fallbackErrors.join("\n  - ")}`);
 	}
+	const skipped = modelProvidersSkippedByPolicy(["openai", "gemini"]);
+	if (skipped.length > 0) throw retrievalOnlyExhaustedError("search", skipped);
 
 	throw new Error(
 		"No search provider available. Either:\n" +
@@ -923,7 +982,7 @@ export async function search(query: string, options: FullSearchOptions = {}): Pr
 		`  2. Set openaiApiKey, braveApiKey, parallelApiKey, tinyfishApiKey, searchinfinityApiKey, queritApiKey, tavilyApiKey, firecrawlBaseUrl, jinaApiKey, kagiApiKey, ollamaApiKey, searxngBaseUrl, perplexityApiKey, exaApiKey, geminiApiKey, bochaApiKey, or cloudflareApiKey in ${CONFIG_PATH}\n` +
 		"  3. Set OPENAI_API_KEY, BRAVE_API_KEY, PARALLEL_API_KEY, TINYFISH_API_KEY, SEARCHINFINITY_API_KEY, QUERIT_API_KEY, TAVILY_API_KEY, FIRECRAWL_BASE_URL, JINA_API_KEY, KAGI_API_KEY, BOCHA_API_KEY, OLLAMA_API_KEY, SEARXNG_BASE_URL, EXA_API_KEY, PERPLEXITY_API_KEY, GEMINI_API_KEY, or CLOUDFLARE_API_KEY env vars\n" +
 		"  4. Set GOOGLE_GEMINI_BASE_URL with CLOUDFLARE_API_KEY for Cloudflare AI Gateway routing\n" +
-		"  5. Sign into gemini.google.com in a supported Chromium-based browser\n" +
+		`  5. ${browserCookieAccessHintLine()}\n` +
 		"  6. Explicitly select provider: \"anysearch\" for anonymous AnySearch, \"xai\" for Grok, \"mistral\" for Mistral Conversations web search, \"you\" for You.com, \"zai\" for Z.ai GLM Coding Plan search, \"valyu\" for research search, \"keenable\" for keyless Keenable search, \"ceramic\" for Ceramic search, \"deepseek\" for DeepSeek search, \"linkup\" for Linkup search, \"ninerouter\" for a 9router gateway, \"cloudflare\" for the Cloudflare Web Search API, \"tabstack\" for Tabstack Research, or a custom provider from customSearchProviders"
 	);
 }
